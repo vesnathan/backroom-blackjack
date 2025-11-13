@@ -1,0 +1,83 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+**/node_modules
+**/package-lock.json
+
+# next.js
+**/.next/
+**/out/
+
+# production
+**/build
+**/dist
+
+# misc
+**/.DS_Store
+**/*.pem
+**/*.key
+
+# debug
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/*.log
+
+# local env files
+**/.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# typescript
+**/*.tsbuildinfo
+**/next-env.d.ts
+gqlTypes.ts
+
+# auto-generated schema files
+**/combined_schema.graphql
+
+# compiled resolvers and Lambda functions (generated during deployment)
+# Use a repo-local cache directory for generated deploy artifacts:
+.cache/deploy/
+.cache/deploy/*/resolvers/
+.cache/deploy/*/lib/
+packages/deploy/templates/cwl/functions/*.js
+packages/deploy/templates/cwl/functions/*.js.map
+
+# nx cache
+.nx/cache
+.nx/workspace-data
+
+# deployment outputs
+**/deployment-outputs.json
+
+# serverless
+.serverless
+lerna-debug.log
+WAF_output.json
+.nx.env
+temp-aws-config
+access-key.json
+
+# AWS artifacts
+**/aws/dist/
+**/aws/install
+
+# Archive files
+**/*.tar.gz
+**/*.zip
+**/*.tgz
+
+# IDE files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
