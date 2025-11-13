@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+yarn prettier --write 'frontend/**/*.{ts,tsx,js,jsx}' 'backend/**/*.{ts,tsx,js,jsx}' && git add -u
