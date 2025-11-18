@@ -9,7 +9,11 @@ import {
 import { Card as GameCard } from "@/types/game";
 import { DealerCharacter } from "@/data/dealerCharacters";
 import { dealCard, calculateHandValue, isBlackjack } from "@/lib/gameActions";
-import { CARD_ANIMATION_DURATION } from "@/constants/animations";
+import {
+  CARD_ANIMATION_DURATION,
+  SPLIT_SEPARATION_DELAY,
+  SPLIT_CARD_DEAL_DELAY,
+} from "@/constants/animations";
 import { GameSettings } from "@/types/gameSettings";
 import { getInitialHandReaction } from "@/data/dialogue";
 import { debugLog } from "@/utils/debug";
@@ -1114,22 +1118,7 @@ export function useGameActions({
       bet: handToSplit.bet,
     };
 
-    // Deal cards to both hands immediately (no animation for splits)
-    const newCard1 = dealCardFromShoe();
-    debugLog(
-      "playerActions",
-      `Dealing to first hand: ${newCard1.rank}${newCard1.suit} (value: ${newCard1.value})`,
-    );
-    hand1.cards.push(newCard1);
-
-    const newCard2 = dealCardFromShoe();
-    debugLog(
-      "playerActions",
-      `Dealing to second hand: ${newCard2.rank}${newCard2.suit} (value: ${newCard2.value})`,
-    );
-    hand2.cards.push(newCard2);
-
-    // Update state immediately
+    // Step 1: Show split hands (one card each)
     if (isResplit) {
       // Resplit: Replace current hand with two new hands
       const newSplitHands = [...playerHand.splitHands!];
@@ -1151,43 +1140,78 @@ export function useGameActions({
         `Resplit complete - now have ${newSplitHands.length} hands, playing hand ${activeIndex + 1}`,
       );
     } else {
-      // Initial split: Create split state (hand2 on left, hand1 on right)
+      // Initial split: Create split state (hand1 on left, hand2 on right)
       setPlayerHand({
         cards: [], // Clear main hand
         bet: playerHand.bet,
         isSplit: true,
-        splitHands: [hand2, hand1],
+        splitHands: [hand1, hand2],
         activeSplitHandIndex: 0,
       });
 
       debugLog("playerActions", "Split complete - starting with first hand");
     }
 
-    // Check if split aces and cannot hit them (automatically stand on both)
-    const isSplitAces = hand1.cards[0].rank === "A";
-    if (isSplitAces && !gameSettings.hitSplitAces) {
+    // Step 2: Deal first card to hand1 after delay
+    const dealToHand1 = registerTimeout(() => {
+      const newCard1 = dealCardFromShoe();
       debugLog(
         "playerActions",
-        "Split Aces - cannot hit, automatically standing on both hands",
+        `Dealing to first hand: ${newCard1.rank}${newCard1.suit} (value: ${newCard1.value})`,
       );
-      // Mark player as finished since they can't hit split aces
-      setPlayerFinished(true);
-      return;
-    }
 
-    // Check if first hand is 21 (automatically stand)
-    const hand1Value = calculateHandValue(hand1.cards);
-    if (hand1Value === 21) {
-      debugLog("playerActions", "First hand has 21 - automatically standing");
-      // Move to next hand
       setPlayerHand((prev) => {
-        const nextIndex = (prev.activeSplitHandIndex || 0) + 1;
-        return {
-          ...prev,
-          activeSplitHandIndex: nextIndex,
+        if (!prev.splitHands) return prev;
+        const updatedHands = [...prev.splitHands];
+        const handIndex = isResplit ? playerHand.activeSplitHandIndex! : 0;
+        updatedHands[handIndex] = {
+          ...updatedHands[handIndex],
+          cards: [...updatedHands[handIndex].cards, newCard1],
         };
+        return { ...prev, splitHands: updatedHands };
       });
-    }
+
+      // Step 3: Deal second card to hand2 after another delay
+      const dealToHand2 = registerTimeout(() => {
+        const newCard2 = dealCardFromShoe();
+        debugLog(
+          "playerActions",
+          `Dealing to second hand: ${newCard2.rank}${newCard2.suit} (value: ${newCard2.value})`,
+        );
+
+        setPlayerHand((prev) => {
+          if (!prev.splitHands) return prev;
+          const updatedHands = [...prev.splitHands];
+          const hand2Index = isResplit ? playerHand.activeSplitHandIndex! + 1 : 1;
+          updatedHands[hand2Index] = {
+            ...updatedHands[hand2Index],
+            cards: [...updatedHands[hand2Index].cards, newCard2],
+          };
+          return { ...prev, splitHands: updatedHands };
+        });
+
+        // Check for split aces after all cards are dealt
+        const isSplitAces = hand1.cards[0].rank === "A";
+        if (isSplitAces && !gameSettings.hitSplitAces) {
+          debugLog(
+            "playerActions",
+            "Split Aces - cannot hit, automatically standing on both hands",
+          );
+          setPlayerFinished(true);
+          return;
+        }
+
+        // Check if first hand is 21
+        const hand1Value = calculateHandValue([...hand1.cards, newCard1]);
+        if (hand1Value === 21) {
+          debugLog("playerActions", "First hand has 21 - automatically standing");
+          setPlayerHand((prev) => {
+            const nextIndex = (prev.activeSplitHandIndex || 0) + 1;
+            return { ...prev, activeSplitHandIndex: nextIndex };
+          });
+        }
+      }, SPLIT_CARD_DEAL_DELAY);
+    }, SPLIT_SEPARATION_DELAY);
   }, [
     playerHand,
     playerChips,

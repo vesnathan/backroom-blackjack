@@ -2,6 +2,10 @@
 export const CARD_ANIMATION_DURATION = 800;
 export const CARD_APPEAR_TIME = 700; // Slightly before animation completes for smooth transition
 
+// Split animation delays
+export const SPLIT_SEPARATION_DELAY = 500; // Delay after separating cards
+export const SPLIT_CARD_DEAL_DELAY = 600; // Delay between dealing to each split hand
+
 // Card size constants
 export const CARD_WIDTH = 70; // px
 export const CARD_HEIGHT = 98; // px
