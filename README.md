@@ -186,6 +186,10 @@ See `documents/` folder for setup guides and the `CLAUDE.md` file for detailed i
 - Fixed issues and their solutions
 - Game constants and layout
 
+## Bug Reports
+
+Bug reports and issue submissions are welcome! Please open an issue on GitHub if you encounter any problems.
+
 ## License
 
-MIT
+Copyright © 2024. All rights reserved.

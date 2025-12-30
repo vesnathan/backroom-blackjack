@@ -21,7 +21,11 @@ import {
   getDecisionCommentary,
 } from "@/data/dialogue";
 import { getBasicStrategyAction } from "@/lib/basicStrategy";
-import { CARD_ANIMATION_DURATION } from "@/constants/animations";
+import {
+  CARD_ANIMATION_DURATION,
+  SPLIT_SEPARATION_DELAY,
+  SPLIT_CARD_DEAL_DELAY,
+} from "@/constants/animations";
 import { GameSettings } from "@/types/gameSettings";
 import { generateBustReaction } from "@/utils/reactions";
 import { debugLog } from "@/utils/debug";
@@ -515,32 +519,17 @@ export function useAITurnsPhase({
             `Splitting ${card1.rank}${card1.suit} and ${card2.rank}${card2.suit}`,
           );
 
-          // Create two hands
+          // Step 1: Show separated hands (one card each)
           const hand1: PlayerHand = { cards: [card1], bet: currentHand.bet };
           const hand2: PlayerHand = { cards: [card2], bet: currentHand.bet };
 
-          // Deal cards immediately without animation (AI splits are instant)
-          const newCard1 = dealCardFromShoe();
-          hand1.cards.push(newCard1);
-          debugLog(
-            "aiTurns",
-            `Dealt to first hand: ${newCard1.rank}${newCard1.suit}`,
-          );
-
-          const newCard2 = dealCardFromShoe();
-          hand2.cards.push(newCard2);
-          debugLog(
-            "aiTurns",
-            `Dealt to second hand: ${newCard2.rank}${newCard2.suit}`,
-          );
-
-          // Update AI player with split hands
+          // Update AI player with split hands (cards not yet dealt)
           setAIPlayers((prev) => {
             const updated = [...prev];
             if (isResplit) {
               // Resplit: Replace current split hand with two new hands
               const newSplitHands = [...ai.hand.splitHands!];
-              newSplitHands.splice(activeHandIdx, 1, hand2, hand1);
+              newSplitHands.splice(activeHandIdx, 1, hand1, hand2);
 
               updated[idx] = {
                 ...updated[idx],
@@ -555,58 +544,118 @@ export function useAITurnsPhase({
 
               debugLog(
                 "aiTurns",
-                `AI resplit complete - now have ${newSplitHands.length} hands`,
+                `AI resplit initiated - now have ${newSplitHands.length} hands`,
               );
             } else {
-              // Initial split: Create split state (hand2 on left, hand1 on right)
+              // Initial split: Create split state (hand1 on left, hand2 on right)
               updated[idx] = {
                 ...updated[idx],
                 hand: {
                   cards: [],
                   bet: ai.hand.bet,
                   isSplit: true,
-                  splitHands: [hand2, hand1],
+                  splitHands: [hand1, hand2],
                   activeSplitHandIndex: 0,
                 },
               };
 
-              debugLog("aiTurns", "AI split complete - will play both hands");
+              debugLog("aiTurns", "AI split initiated - will play both hands");
             }
             return updated;
           });
 
-          // Check if first hand is 21 (automatically move to next hand)
-          const hand1Value = calculateHandValue(hand1.cards);
-          if (hand1Value === 21) {
+          // Step 2: Deal first card to hand1 after delay
+          const dealToHand1 = registerTimeout(() => {
+            const newCard1 = dealCardFromShoe();
             debugLog(
               "aiTurns",
-              "First split hand has 21 - moving to next hand",
+              `Dealing to first hand: ${newCard1.rank}${newCard1.suit} (value: ${newCard1.value})`,
             );
+
             setAIPlayers((prev) => {
               const updated = [...prev];
-              const currentActiveSplitIdx =
-                updated[idx].hand.activeSplitHandIndex ?? 0;
+              const currentSplitHands = [...updated[idx].hand.splitHands!];
+              const handIndex = isResplit ? activeHandIdx : 0;
+              currentSplitHands[handIndex] = {
+                ...currentSplitHands[handIndex],
+                cards: [...currentSplitHands[handIndex].cards, newCard1],
+              };
               updated[idx] = {
                 ...updated[idx],
                 hand: {
                   ...updated[idx].hand,
-                  activeSplitHandIndex: currentActiveSplitIdx + 1,
+                  splitHands: currentSplitHands,
                 },
               };
               return updated;
             });
-          }
 
-          // Clear action indicator and continue after brief pause
-          registerTimeout(() => {
-            setPlayerActions((prev) => {
-              const newMap = new Map(prev);
-              newMap.delete(idx);
-              return newMap;
-            });
-            aiTurnProcessingRef.current = false;
-            setActivePlayerIndex(null);
-          }, 800);
+            // Step 3: Deal second card to hand2 after another delay
+            const dealToHand2 = registerTimeout(() => {
+              const newCard2 = dealCardFromShoe();
+              debugLog(
+                "aiTurns",
+                `Dealing to second hand: ${newCard2.rank}${newCard2.suit} (value: ${newCard2.value})`,
+              );
+
+              setAIPlayers((prev) => {
+                const updated = [...prev];
+                const currentSplitHands = [...updated[idx].hand.splitHands!];
+                const handIndex = isResplit ? activeHandIdx + 1 : 1;
+                currentSplitHands[handIndex] = {
+                  ...currentSplitHands[handIndex],
+                  cards: [...currentSplitHands[handIndex].cards, newCard2],
+                };
+                updated[idx] = {
+                  ...updated[idx],
+                  hand: {
+                    ...updated[idx].hand,
+                    splitHands: currentSplitHands,
+                  },
+                };
+                return updated;
+              });
+
+              debugLog("aiTurns", "AI split complete - both cards dealt");
+
+              // Check if first hand is 21 (automatically move to next hand)
+              setAIPlayers((prev) => {
+                const updated = [...prev];
+                const currentSplitHands = updated[idx].hand.splitHands!;
+                const firstHandIdx = isResplit ? activeHandIdx : 0;
+                const firstHand = currentSplitHands[firstHandIdx];
+                const hand1Value = calculateHandValue(firstHand.cards);
+
+                if (hand1Value === 21) {
+                  debugLog(
+                    "aiTurns",
+                    "First split hand has 21 - moving to next hand",
+                  );
+                  const currentActiveSplitIdx =
+                    updated[idx].hand.activeSplitHandIndex ?? 0;
+                  updated[idx] = {
+                    ...updated[idx],
+                    hand: {
+                      ...updated[idx].hand,
+                      activeSplitHandIndex: currentActiveSplitIdx + 1,
+                    },
+                  };
+                }
+                return updated;
+              });
+
+              // Clear action indicator and continue after brief pause
+              registerTimeout(() => {
+                setPlayerActions((prev) => {
+                  const newMap = new Map(prev);
+                  newMap.delete(idx);
+                  return newMap;
+                });
+                aiTurnProcessingRef.current = false;
+                setActivePlayerIndex(null);
+              }, 300);
+            }, SPLIT_CARD_DEAL_DELAY);
+          }, SPLIT_SEPARATION_DELAY);
         }, decisionTime + actionDisplay);
 
         return; // Exit early for split

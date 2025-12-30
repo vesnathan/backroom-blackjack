@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { execCommandAsPromise } from "@/lib/utils/execCommandAsPromise";
+import { execCommandAsPromise } from "../src/lib/utils/execCommandAsPromise";
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const buildGql = async () => {
@@ -11,7 +11,7 @@ const buildGql = async () => {
   );
   try {
     await execCommandAsPromise(
-      `npx ts-node -P ../../../tsconfig.node.json ${mergeSchemaScript}`,
+      `npx ts-node ${mergeSchemaScript}`,
       { captureStdOut: false },
     );
   } catch (err) {
@@ -68,19 +68,19 @@ const buildGql = async () => {
   if (!generated) {
     // Non-amplify fallback using graphql-codegen (non-interactive)
     try {
-      const outDir = path.resolve(__dirname, "../src/types");
+      const outDir = path.resolve(__dirname, "../../shared/src/types");
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
       const tmpConfigPath = path.resolve(__dirname, "../codegen.temp.yml");
-      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ./src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config: {}\n`;
+      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ../shared/src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config: {}\n`;
       fs.writeFileSync(tmpConfigPath, yaml, "utf8");
 
       // eslint-disable-next-line no-console
       console.info(
-        "Running graphql-codegen fallback to generate src/types/gqlTypes.ts",
+        "Running graphql-codegen fallback to generate shared/src/types/gqlTypes.ts",
       );
       await execCommandAsPromise(
-        `npx --yes @graphql-codegen/cli generate --config ${tmpConfigPath}`,
+        `yarn graphql-codegen --config ${tmpConfigPath}`,
       );
       try {
         fs.unlinkSync(tmpConfigPath);

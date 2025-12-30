@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   signUp,
@@ -8,6 +8,12 @@ import {
   signIn,
 } from "aws-amplify/auth";
 import { useSetGlobalMessage } from "@/components/common/GlobalMessage";
+import {
+  RegistrationSchema,
+  ConfirmationCodeSchema,
+  type RegistrationInput,
+  type ConfirmationCodeInput,
+} from "@/schemas/AuthSchemas";
 
 export enum REGISTRATION_STEP {
   ENTER_DETAILS = "enter-details",
@@ -28,7 +34,55 @@ export const useRegistrationController = (options: {
   const [confirmationCode, setConfirmationCode] = useState("");
   const [confirmationDestination, setConfirmationDestination] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [validationErrors, setValidationErrors] = useState<
+    Partial<Record<keyof RegistrationInput | keyof ConfirmationCodeInput, string>>
+  >({});
   const setGlobalMessage = useSetGlobalMessage();
+
+  const validateRegistrationForm = useCallback((): boolean => {
+    const result = RegistrationSchema.safeParse({
+      email: userEmail,
+      username,
+      password: userPassword,
+      confirmPassword,
+    });
+
+    if (!result.success) {
+      const errors: Partial<Record<keyof RegistrationInput, string>> = {};
+      result.error.errors.forEach((err) => {
+        const field = err.path[0] as keyof RegistrationInput;
+        if (!errors[field]) {
+          errors[field] = err.message;
+        }
+      });
+      setValidationErrors(errors);
+      return false;
+    }
+
+    setValidationErrors({});
+    return true;
+  }, [userEmail, username, userPassword, confirmPassword]);
+
+  const validateConfirmationForm = useCallback((): boolean => {
+    const result = ConfirmationCodeSchema.safeParse({
+      confirmationCode,
+    });
+
+    if (!result.success) {
+      const errors: Partial<Record<keyof ConfirmationCodeInput, string>> = {};
+      result.error.errors.forEach((err) => {
+        const field = err.path[0] as keyof ConfirmationCodeInput;
+        if (!errors[field]) {
+          errors[field] = err.message;
+        }
+      });
+      setValidationErrors(errors);
+      return false;
+    }
+
+    setValidationErrors({});
+    return true;
+  }, [confirmationCode]);
 
   const signUpMutation = useMutation({
     mutationFn: async (input: SignUpInput) => {
@@ -111,6 +165,9 @@ export const useRegistrationController = (options: {
     setConfirmationCode,
     confirmationDestination,
     errorMessage,
+    validationErrors,
+    validateRegistrationForm,
+    validateConfirmationForm,
     signUpMutation,
     confirmSignUpMutation,
   };
