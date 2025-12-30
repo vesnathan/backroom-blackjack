@@ -31,17 +31,15 @@
       "@/stores/*": ["./src/stores/*"],
       "@/SVGR/*": ["./src/SVGR/*"],
       "@/graphQL/*": ["./src/graphQL/*"],
-      "@shared/*": ["../../shared/*"],
+      "@shared/*": ["../shared/*"],
+      "gqlTypes": ["../shared/src/types/gqlTypes.ts"],
       "@cct/backend/*": ["../backend/*"]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "../../shared/**/*.ts",
-    "../../shared/scripts/buildGqlTypesOnBackend.ts",
-    "../../shared/scripts/execCommandAsPromise.ts",
-    "../../shared/scripts/mergeGraphqlFiles.ts",
+    "../shared/**/*.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

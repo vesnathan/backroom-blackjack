@@ -68,16 +68,16 @@ const buildGql = async () => {
   if (!generated) {
     // Non-amplify fallback using graphql-codegen (non-interactive)
     try {
-      const outDir = path.resolve(__dirname, "../src/types");
+      const outDir = path.resolve(__dirname, "../../shared/src/types");
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
       const tmpConfigPath = path.resolve(__dirname, "../codegen.temp.yml");
-      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ./src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config: {}\n`;
+      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ../shared/src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config: {}\n`;
       fs.writeFileSync(tmpConfigPath, yaml, "utf8");
 
       // eslint-disable-next-line no-console
       console.info(
-        "Running graphql-codegen fallback to generate src/types/gqlTypes.ts",
+        "Running graphql-codegen fallback to generate shared/src/types/gqlTypes.ts",
       );
       await execCommandAsPromise(
         `yarn graphql-codegen --config ${tmpConfigPath}`,
