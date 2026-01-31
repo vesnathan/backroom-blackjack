@@ -10,6 +10,8 @@ import {
 } from "@/types/gameState";
 import { GameSettings } from "@/types/gameSettings";
 import { DealerCharacter } from "@/data/dealerCharacters";
+import { PitBossCharacter } from "@/data/pitBossCharacters";
+import { SessionStats } from "@/hooks/usePlayerHand";
 
 interface GameState {
   // Display state
@@ -20,12 +22,14 @@ interface GameState {
   runningCount: number;
   currentStreak: number;
   playerChips: number;
+  chipsLoading: boolean;
   currentScore: number;
   scoreMultiplier: number;
 
   // Game state
   cardsDealt: number;
   currentDealer: DealerCharacter | null;
+  currentPitBoss: PitBossCharacter | null;
   dealerCallout: string | null;
   phase: GamePhase;
   dealerHand: PlayerHand;
@@ -54,6 +58,14 @@ interface GameState {
   maxBet: number;
   peakChips: number;
   longestStreak: number;
+
+  // Session statistics
+  sessionStats: SessionStats;
+  sessionNetProfit: number;
+  sessionWinRate: number;
+
+  // Badges/Achievements
+  earnedBadgeIds: string[];
 }
 
 const GameStateContext = createContext<GameState | undefined>(undefined);

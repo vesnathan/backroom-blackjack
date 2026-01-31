@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { GameSettings, DEFAULT_GAME_SETTINGS } from "@/types/gameSettings";
 import { DealerCharacter } from "@/data/dealerCharacters";
+import { PitBossCharacter } from "@/data/pitBossCharacters";
 import {
   PlayerHand,
   AIPlayer,
@@ -17,6 +18,7 @@ import { useGameTimeouts } from "@/hooks/useGameTimeouts";
 import { useDebugLogging } from "@/hooks/useDebugLogging";
 import { useGameShoe } from "@/hooks/useGameShoe";
 import { usePlayerHand } from "@/hooks/usePlayerHand";
+import { useHandRecording } from "@/hooks/useHandRecording";
 import { useBettingActions } from "@/hooks/useBettingActions";
 import { useConversationHandlers } from "@/hooks/useConversationHandlers";
 import { useGameActions } from "@/hooks/useGameActions";
@@ -36,8 +38,11 @@ import { useAITurnsPhase } from "@/hooks/useAITurnsPhase";
 import { useDealingPhase } from "@/hooks/useDealingPhase";
 import { useInsurancePhase } from "@/hooks/useInsurancePhase";
 import { useHeatMap } from "@/hooks/useHeatMap";
-import { useAudioQueue } from "@/hooks/useAudioQueue";
-import { useDealerVoice } from "@/hooks/useDealerVoice";
+import { useDealerCallouts } from "@/hooks/useDealerCallouts";
+import { usePitBossWarnings } from "@/hooks/usePitBossWarnings";
+import { useBadgeIntegration } from "@/hooks/useBadgeIntegration";
+import { useBadgeSyncToBackend } from "@/hooks/useBadgeSyncToBackend";
+import { useChipsSync } from "@/hooks/useChipsSync";
 import { calculateDecksRemaining, calculateTrueCount } from "@/lib/deck";
 import BlackjackGameUI from "@/components/BlackjackGameUI";
 import BackgroundMusic from "@/components/BackgroundMusic";
@@ -46,8 +51,16 @@ import { AuthModal } from "@/components/auth/AuthModal";
 import AdminSettingsModal from "@/components/AdminSettingsModal";
 import CountPeekModal from "@/components/CountPeekModal";
 import CountPeekConfirmation from "@/components/CountPeekConfirmation";
+import BackoffModal from "@/components/BackoffModal";
+import SubscribeBannerModal from "@/components/SubscribeBannerModal";
+import ChatPanel from "@/components/chat/ChatPanel";
+import { BadgeBar } from "@/components/badges";
+import BadgeEarnedAnimation from "@/components/badges/BadgeEarnedAnimation";
+import { InviteFriend } from "@/components/InviteFriend";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/hooks/useSubscription";
 import { debugLog } from "@/utils/debug";
+import { clearAllConversationColors } from "@/utils/conversationColorManager";
 import { TestScenario } from "@/types/testScenarios";
 import TestScenarioSelector from "@/components/TestScenarioSelector";
 import { GameStateProvider } from "@/contexts/GameStateContext";
@@ -56,7 +69,8 @@ import { GameActionsProvider } from "@/contexts/GameActionsContext";
 
 export default function GamePage() {
   // Auth state
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin, refresh: refreshAuth } = useAuth();
+  const { isSubscribed } = useSubscription();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Welcome modal state
@@ -97,12 +111,27 @@ export default function GamePage() {
     minBet,
     maxBet,
     currentScore,
+    setCurrentScore,
     currentStreak,
+    setCurrentStreak,
     longestStreak,
+    setLongestStreak,
     peakChips,
+    setPeakChips,
     scoreMultiplier,
     setScoreMultiplier,
+    sessionStats,
+    getSessionNetProfit,
+    getSessionWinRate,
+    awardCorrectDecisionPoints,
+    resetStreak,
   } = usePlayerHand();
+
+  // Sync chips with backend (load on mount, save on change)
+  const { chipsLoading } = useChipsSync({ setPlayerChips, playerChips });
+
+  // Event-sourced hand recording for granular analytics
+  const { recordHand, addDecision } = useHandRecording();
 
   // AI players state
   const [aiPlayers, setAIPlayers] = useState<AIPlayer[]>([]);
@@ -120,9 +149,43 @@ export default function GamePage() {
     () => Math.floor(Math.random() * 3) + 8,
   ); // 8-10 shoes
 
+  // Pit boss character state
+  const [currentPitBoss, setCurrentPitBoss] = useState<PitBossCharacter | null>(
+    null,
+  );
+
   // Insurance state
   const [playerInsuranceBet, setPlayerInsuranceBet] = useState(0);
   const [insuranceOffered, setInsuranceOffered] = useState(false);
+
+  // Badges/Achievements state
+  const [earnedBadgeIds, setEarnedBadgeIds] = useState<string[]>([]);
+  const [animatingBadgeId, setAnimatingBadgeId] = useState<string | null>(null);
+
+  // Sync badges with backend for authenticated users (must be before useBadgeIntegration)
+  const { badgesLoading } = useBadgeSyncToBackend({
+    earnedBadgeIds,
+    setEarnedBadgeIds,
+  });
+
+  // Badge/achievement tracking - watches game stats and awards badges
+  useBadgeIntegration({
+    sessionStats,
+    longestStreak,
+    peakChips,
+    currentChips: playerChips,
+    perfectShoes: 0, // TODO: Track perfect shoes (no incorrect decisions in a shoe)
+    earnedBadgeIds,
+    setEarnedBadgeIds,
+    hasUsedCountingSystem: true, // Always true in card counting trainer context
+    badgesLoading, // Don't check badges until they're loaded from backend
+    onBadgeEarned: (badgeId) => {
+      // Only show animation if not already showing one
+      if (!animatingBadgeId) {
+        setAnimatingBadgeId(badgeId);
+      }
+    },
+  });
 
   // UI state
   const [phase, setPhase] = useState<GamePhase>("BETTING");
@@ -147,6 +210,10 @@ export default function GamePage() {
   const [showStrategyCard, setShowStrategyCard] = useState(false);
   const [showHeatMap, setShowHeatMap] = useState(false);
   const [showCountPeek, setShowCountPeek] = useState(false);
+  const [showSessionStats, setShowSessionStats] = useState(false);
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
+  const [showSubscribeBanner, setShowSubscribeBanner] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [devTestingMode, setDevTestingMode] = useState(false);
   const [showTestScenarioSelector, setShowTestScenarioSelector] =
     useState(false);
@@ -156,6 +223,7 @@ export default function GamePage() {
     useState(false);
   const [showCountPeekResult, setShowCountPeekResult] = useState(false);
   const [showPenaltyFlash, setShowPenaltyFlash] = useState(false);
+  const [showBackoffModal, setShowBackoffModal] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [strategyCardUsedThisHand, setStrategyCardUsedThisHand] =
     useState(false);
@@ -172,6 +240,9 @@ export default function GamePage() {
     new Set(),
   ); // Track which AI players have finished
   const [playerFinished, setPlayerFinished] = useState<boolean>(false); // Track if human player has finished
+  const [blackjackCelebratedPlayers, setBlackjackCelebratedPlayers] = useState<
+    Set<number>
+  >(new Set()); // Track AI players who already celebrated blackjack during dealing
 
   // Flying card animations
   const [flyingCards, setFlyingCards] = useState<FlyingCardData[]>([]);
@@ -182,22 +253,33 @@ export default function GamePage() {
   // Track previous hand states for in-hand reactions
   // const prevAIHandsRef = useRef<Map<string, number>>(new Map()); // TODO: Use for reaction tracking
 
-  // Audio queue hook - manages audio playback with priority
-  const audioQueue = useAudioQueue({ registerTimeout });
-
   // Game interactions hook - provides conversation and speech bubble functions
   const { triggerConversation, addSpeechBubble, showEndOfHandReactions } =
     useGameInteractions({
-      activeConversation,
-      setActiveConversation,
       setSpeechBubbles,
       registerTimeout,
       aiPlayers,
       dealerHand,
-      blackjackPayout: gameSettings.blackjackPayout,
       currentDealer,
       devTestingMode,
+      blackjackCelebratedPlayers,
     });
+
+  // Wrapper that records decision AND updates streak/score
+  const handleDecision = useCallback(
+    (action: string, correctAction: string) => {
+      // Record for backend analytics
+      addDecision(action, correctAction);
+
+      // Update streak based on whether decision was correct
+      if (action === correctAction) {
+        awardCorrectDecisionPoints();
+      } else {
+        resetStreak();
+      }
+    },
+    [addDecision, awardCorrectDecisionPoints, resetStreak],
+  );
 
   // Game actions hook - provides startNewRound, dealInitialCards, hit, stand, doubleDown, split, surrender
   const {
@@ -219,13 +301,11 @@ export default function GamePage() {
     runningCount,
     shoesDealt,
     gameSettings,
-    currentDealer,
     playerChips,
     selectedTestScenario,
     setPhase,
     setCurrentBet,
     setDealerRevealed,
-    setDealerCallout,
     setPlayerHand,
     setDealerHand,
     setSpeechBubbles,
@@ -251,6 +331,7 @@ export default function GamePage() {
     ) => getCardPosition(type, aiPlayers, playerSeat, index, cardIndex),
     addSpeechBubble,
     showEndOfHandReactions,
+    addDecision: handleDecision,
   });
 
   // Calculate true count for bet tracking
@@ -284,8 +365,6 @@ export default function GamePage() {
       registerTimeout,
       trueCount,
       setBetHistory,
-      currentDealer,
-      audioQueue,
     });
 
   // Detect if player is counting cards (varying bet with count)
@@ -485,6 +564,7 @@ export default function GamePage() {
   useGameInitialization(
     setAIPlayers,
     setCurrentDealer,
+    setCurrentPitBoss,
     setInitialized,
     devTestingMode,
   );
@@ -498,6 +578,8 @@ export default function GamePage() {
     currentDealer,
     playerSociability,
     phase,
+    suspicionLevel,
+    speechBubbles,
     triggerConversation,
     addSpeechBubble,
     registerTimeout,
@@ -506,10 +588,29 @@ export default function GamePage() {
   // Pit boss movement hook
   usePitBossMovement(setPitBossDistance, suspicionLevel);
 
+  // Pit boss warnings hook - triggers warnings at high suspicion and backoff at 100%
+  usePitBossWarnings({
+    suspicionLevel,
+    playerSeat,
+    initialized,
+    onWarning: useCallback(
+      (message: string) => {
+        // Show pit boss warning as a speech bubble at position -2 (pit boss)
+        addSpeechBubble(`pitboss-warning-${Date.now()}`, message, -2);
+      },
+      [addSpeechBubble],
+    ),
+    onBackoff: useCallback(() => {
+      // Show backoff modal
+      setShowBackoffModal(true);
+    }, []),
+  });
+
   // Dealer voice callouts hook - plays dealer audio when entering phases
-  useDealerVoice({
+  useDealerCallouts({
     phase,
     currentDealer,
+    playerSeat,
     addSpeechBubble,
   });
 
@@ -566,25 +667,22 @@ export default function GamePage() {
     debugLog("betting", `Should show betting interface: ${shouldShowBetting}`);
   }, [phase, initialized, playerSeat]);
 
-  // Load devTestingMode from localStorage on mount
-  // TODO: Move to DynamoDB user settings in the future for persistence across devices
+  // Load devTestingMode from localStorage - ADMIN ONLY
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && isAdmin) {
       const saved = localStorage.getItem("devTestingMode");
       if (saved !== null) {
         setDevTestingMode(saved === "true");
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, [isAdmin]);
 
-  // Save devTestingMode to localStorage whenever it changes
-  // TODO: Move to DynamoDB user settings in the future for persistence across devices
+  // Save devTestingMode to localStorage - ADMIN ONLY
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && isAdmin) {
       localStorage.setItem("devTestingMode", String(devTestingMode));
     }
-  }, [devTestingMode]);
+  }, [devTestingMode, isAdmin]);
 
   // Show test scenario selector when entering BETTING phase in dev mode
   // Only trigger when phase changes TO betting, not while staying in betting
@@ -620,6 +718,7 @@ export default function GamePage() {
     setDealerRevealed(false);
     setPlayerFinished(false);
     setSpeechBubbles([]);
+    clearAllConversationColors();
     setWinLossBubbles([]);
 
     // Note: aiPlayers will be reset by useGameInitialization hook which also runs on devTestingMode change
@@ -633,6 +732,7 @@ export default function GamePage() {
     dealerHand,
     activePlayerIndex,
     playersFinished,
+    blackjackCelebratedPlayers,
     playerSeat,
     playerHand,
     playerFinished,
@@ -653,7 +753,7 @@ export default function GamePage() {
     addSpeechBubble,
   });
 
-  // Dealing phase hook - marks blackjack hands as finished
+  // Dealing phase hook - marks blackjack hands as finished and shows celebration
   useDealingPhase({
     phase,
     aiPlayers,
@@ -661,6 +761,8 @@ export default function GamePage() {
     setPlayersFinished,
     setPlayerActions,
     registerTimeout,
+    addSpeechBubble,
+    setBlackjackCelebratedPlayers,
   });
 
   // Insurance phase hook - handles insurance decisions
@@ -682,6 +784,7 @@ export default function GamePage() {
     setHandNumber((prev) => prev + 1);
     setPhase("BETTING");
     setSpeechBubbles([]); // Clear speech bubbles from previous hand
+    clearAllConversationColors(); // Release all conversation colors
     clearDebugLogs(); // Clear debug logs at start of new hand
     setStrategyCardUsedThisHand(false); // Reset strategy card cooldown for new hand
 
@@ -691,6 +794,7 @@ export default function GamePage() {
     setCurrentBet(0);
     setDealerRevealed(false);
     setPlayerFinished(false);
+    setBlackjackCelebratedPlayers(new Set()); // Reset blackjack celebrations
 
     // Clear AI player cards
     setAIPlayers((prev) =>
@@ -716,6 +820,10 @@ export default function GamePage() {
     playerSeat,
     cardsDealt,
     gameSettings,
+    isSubscribed,
+    showSubscribeBanner,
+    activeConversation,
+    speechBubbles,
     registerTimeout,
     setAIPlayers,
     setDealerCallout,
@@ -724,6 +832,7 @@ export default function GamePage() {
     setCardsDealt,
     setRunningCount,
     setShoesDealt,
+    setShowSubscribeBanner,
     nextHand,
   });
 
@@ -735,6 +844,7 @@ export default function GamePage() {
     gameSettings,
     currentDealer,
     setDealerRevealed,
+    setRunningCount,
     setDealerHand,
     setFlyingCards,
     setPhase,
@@ -775,6 +885,7 @@ export default function GamePage() {
     registerTimeout,
     showEndOfHandReactions,
     addSpeechBubble,
+    recordHand,
   });
 
   const handleWelcomeClose = () => {
@@ -782,12 +893,51 @@ export default function GamePage() {
     setMusicStarted(true);
   };
 
-  // Wrap setPlayerSeat to require authentication
+  // Handle new session after backoff - reset game state
+  const handleNewSession = useCallback(() => {
+    setShowBackoffModal(false);
+    // Reset suspicion
+    setSuspicionLevel(0);
+    setDealerSuspicion(0);
+    setPitBossDistance(30);
+    // Reset phase to betting
+    setPhase("BETTING");
+    // Clear hands
+    setPlayerHand({ cards: [], bet: 0 });
+    setDealerHand({ cards: [], bet: 0 });
+    setCurrentBet(0);
+    setDealerRevealed(false);
+    setPlayerFinished(false);
+    setSpeechBubbles([]);
+    clearAllConversationColors();
+    setWinLossBubbles([]);
+    // Change dealer (new table)
+    setCurrentDealer(null);
+    // Increment hand number to trigger re-initialization
+    setHandNumber((prev) => prev + 1);
+  }, [
+    setPhase,
+    setPlayerHand,
+    setDealerHand,
+    setCurrentBet,
+    setDealerRevealed,
+    setPlayerFinished,
+    setSpeechBubbles,
+    setCurrentDealer,
+    setSuspicionLevel,
+    setDealerSuspicion,
+    setPitBossDistance,
+    setWinLossBubbles,
+  ]);
+
+  // Wrap setPlayerSeat to require authentication and kick out any AI from the seat
   const handleSeatClick = (seat: number) => {
     if (!isAuthenticated) {
       setShowAuthModal(true);
       return;
     }
+    // Kick out any AI player from this seat
+    setAIPlayers((prev) => prev.filter((ai) => ai.position !== seat));
     setPlayerSeat(seat);
   };
 
@@ -797,6 +947,7 @@ export default function GamePage() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={refreshAuth}
         initialMode="login"
       />
       <AdminSettingsModal
@@ -804,7 +955,27 @@ export default function GamePage() {
         onClose={() => setShowAdminSettings(false)}
         devTestingMode={devTestingMode}
         setDevTestingMode={setDevTestingMode}
+        onResetComplete={() => {
+          // Reset local state to match DB reset values
+          setPlayerChips(1000);
+          setPeakChips(1000);
+          setCurrentScore(0);
+          setCurrentStreak(0);
+          setLongestStreak(0);
+          setEarnedBadgeIds([]);
+        }}
       />
+      <BackoffModal
+        isOpen={showBackoffModal}
+        playerChips={playerChips}
+        sessionNetProfit={getSessionNetProfit()}
+        onNewSession={handleNewSession}
+      />
+      <SubscribeBannerModal
+        isOpen={showSubscribeBanner}
+        onClose={() => setShowSubscribeBanner(false)}
+      />
+      <ChatPanel isOpen={showChat} onClose={() => setShowChat(false)} />
       <CountPeekConfirmation
         isOpen={showCountPeekConfirmation}
         currentMultiplier={scoreMultiplier}
@@ -854,10 +1025,12 @@ export default function GamePage() {
           runningCount,
           currentStreak,
           playerChips,
+          chipsLoading,
           currentScore,
           scoreMultiplier,
           cardsDealt,
           currentDealer,
+          currentPitBoss,
           dealerCallout,
           phase,
           dealerHand,
@@ -879,6 +1052,10 @@ export default function GamePage() {
           maxBet,
           peakChips,
           longestStreak,
+          sessionStats,
+          sessionNetProfit: getSessionNetProfit(),
+          sessionWinRate: getSessionWinRate(),
+          earnedBadgeIds,
         }}
       >
         <UIStateProvider
@@ -889,6 +1066,10 @@ export default function GamePage() {
             showStrategyCard,
             showHeatMap,
             showCountPeek,
+            showSessionStats,
+            showAdvancedAnalytics,
+            showSubscribeBanner,
+            showChat,
             debugLogs,
             showDebugLog,
             strategyCardUsedThisHand,
@@ -904,6 +1085,10 @@ export default function GamePage() {
             setShowHeatMap,
             setShowDealerInfo,
             setShowCountPeek,
+            setShowSessionStats,
+            setShowAdvancedAnalytics,
+            setShowSubscribeBanner,
+            setShowChat,
             setShowDebugLog,
             setDevTestingMode,
             clearDebugLogs,
@@ -934,6 +1119,35 @@ export default function GamePage() {
           </GameActionsProvider>
         </UIStateProvider>
       </GameStateProvider>
+
+      {/* Badge bar at bottom of screen - only for authenticated users */}
+      <BadgeBar
+        earnedBadgeIds={earnedBadgeIds}
+        isAuthenticated={isAuthenticated}
+      />
+
+      {/* Badge earned animation */}
+      {animatingBadgeId && (
+        <BadgeEarnedAnimation
+          badgeId={animatingBadgeId}
+          onComplete={() => setAnimatingBadgeId(null)}
+        />
+      )}
+
+      {/* Invite and Share overlay - top left */}
+      {isAuthenticated && (
+        <div
+          style={{
+            position: "fixed",
+            top: "10px",
+            left: "20px",
+            zIndex: 1000,
+          }}
+        >
+          <InviteFriend />
+        </div>
+      )}
+
       <BackgroundMusic shouldPlay={musicStarted} />
     </>
   );
