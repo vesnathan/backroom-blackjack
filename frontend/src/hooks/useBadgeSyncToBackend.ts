@@ -4,6 +4,14 @@ import { client } from "@/lib/amplify";
 import { useAuth } from "@/contexts/AuthContext";
 import { debugLog } from "@/utils/debug";
 
+// Response type for GraphQL query
+interface GetUserBadgesResponse {
+  getUser: {
+    id: string;
+    earnedBadgeIds: string[] | null;
+  } | null;
+}
+
 // GraphQL query to get user badges
 const GET_USER_BADGES = /* GraphQL */ `
   query GetUser {
@@ -55,10 +63,10 @@ export function useBadgeSyncToBackend({
         authMode: "userPool",
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userData = (response as any)?.data?.getUser;
+      const userData = (response as { data: GetUserBadgesResponse }).data
+        ?.getUser;
       if (userData?.earnedBadgeIds) {
-        const backendBadges = userData.earnedBadgeIds as string[];
+        const backendBadges = userData.earnedBadgeIds;
         debugLog(
           "badges",
           `Loaded ${backendBadges.length} badges from backend`,

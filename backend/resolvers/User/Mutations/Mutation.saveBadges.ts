@@ -5,7 +5,23 @@ interface Args {
   badgeIds: string[];
 }
 
-type CTX = Context<Args, object, object, object, User>;
+// DynamoDB item structure for User
+interface UserItem {
+  email?: string;
+  username?: string;
+  chips?: number;
+  totalChipsPurchased?: number;
+  avatarUrl?: string | null;
+  subscriptionInfo?: User["subscriptionInfo"];
+  stats?: User["stats"];
+  earnedBadgeIds?: string[];
+  earlyAdopter?: boolean;
+  earlyAdopterQualifiedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+type CTX = Context<Args, object, object, object, UserItem>;
 
 export function request(ctx: CTX) {
   const identity = ctx.identity as AppSyncIdentityCognito;
@@ -42,8 +58,7 @@ export function response(ctx: CTX): User | null {
     return util.error(ctx.error.message, ctx.error.type);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const item = ctx.result as any;
+  const item = ctx.result;
   const identity = ctx.identity as AppSyncIdentityCognito;
   const userId = identity.sub;
 

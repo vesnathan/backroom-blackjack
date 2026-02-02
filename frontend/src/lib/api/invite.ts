@@ -1,5 +1,10 @@
 import { client } from "@/lib/amplify";
 
+// Response type for GraphQL operation
+interface SendInviteResponse {
+  sendInvite: boolean;
+}
+
 // GraphQL mutation for sending invites
 const SEND_INVITE = /* GraphQL */ `
   mutation SendInvite(
@@ -34,8 +39,7 @@ export async function sendInvite(input: SendInviteInput): Promise<boolean> {
       authMode: "userPool",
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (result as any).data?.sendInvite === true;
+    return (result as { data: SendInviteResponse }).data?.sendInvite === true;
   } catch (error) {
     console.error("Failed to send invite:", error);
     throw error;
