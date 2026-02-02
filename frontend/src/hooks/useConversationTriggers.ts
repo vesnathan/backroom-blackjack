@@ -60,8 +60,7 @@ export function useConversationTriggers({
   phase,
   suspicionLevel = 0,
   speechBubbles,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  triggerConversation,
+  triggerConversation: _triggerConversation,
   addSpeechBubble,
   registerTimeout,
 }: UseConversationTriggersParams) {

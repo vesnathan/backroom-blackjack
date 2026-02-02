@@ -171,7 +171,7 @@ Only proceed with `git add` and `git commit` after all checks pass.
 **FULLY COMPLIANT** - Excellent file separation for game logic:
 - Shared types in `shared/src/types/`
 - Zod validation with `Schema.safeParse()` in controllers
-- Only 2 justified `any` instances with eslint-disable
+- ESLint disables are justified (Amplify GraphQL typing, styled-jsx, debug utilities)
 
 ---
 

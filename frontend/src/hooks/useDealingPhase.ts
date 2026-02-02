@@ -51,8 +51,7 @@ interface UseDealingPhaseParams {
 export function useDealingPhase({
   phase,
   aiPlayers,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  dealerHand,
+  dealerHand: _dealerHand,
   setPlayersFinished,
   setPlayerActions,
   registerTimeout,

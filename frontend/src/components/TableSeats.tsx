@@ -48,7 +48,6 @@ function getChipBreakdown(amount: number): number[] {
   const denoms = [500, 100, 50, 25, 10, 5];
   let remaining = amount;
   denoms.forEach((denom) => {
-    // eslint-disable-next-line no-constant-condition
     while (remaining >= denom && chips.length < 8) {
       chips.push(denom);
       remaining -= denom;

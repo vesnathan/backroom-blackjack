@@ -48,6 +48,5 @@ export function ScreenSizeGate({ children }: ScreenSizeGateProps) {
     );
   }
 
-  // eslint-disable-next-line react/jsx-no-useless-fragment
-  return <>{children}</>;
+  return children;
 }

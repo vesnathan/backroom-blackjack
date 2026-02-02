@@ -52,8 +52,7 @@ export function useBettingActions({
   setPlayerHand,
   setDealerHand,
   setPreviousBet,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  setSpeechBubbles,
+  setSpeechBubbles: _setSpeechBubbles,
   setAIPlayers,
   dealInitialCards,
   registerTimeout,

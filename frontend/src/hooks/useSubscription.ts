@@ -298,7 +298,6 @@ export function useSubscription(): UseSubscriptionReturn {
     async (
       checkoutTier: SubscriptionTier,
       // Provider is currently always Stripe, but kept for future expansion
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       _provider: PaymentProvider,
     ): Promise<string | null> => {
       if (!isAuthenticated) {

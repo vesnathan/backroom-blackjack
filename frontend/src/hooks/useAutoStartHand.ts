@@ -51,8 +51,7 @@ export function useAutoStartHand({
   setPlayerHand,
   setDealerHand,
   setPlayerChips,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  setSpeechBubbles,
+  setSpeechBubbles: _setSpeechBubbles,
   setAIPlayers,
   aiPlayers,
   dealInitialCards,
