@@ -7,9 +7,12 @@ import GameSettingsModal from "@/components/GameSettingsModal";
 import LeaderboardModal from "@/components/LeaderboardModal";
 import BasicStrategyCard from "@/components/BasicStrategyCard";
 import DebugLogModal from "@/components/DebugLogModal";
+import SessionStatsModal from "@/components/SessionStatsModal";
+import AdvancedAnalyticsModal from "@/components/AdvancedAnalyticsModal";
 import { useGameState } from "@/contexts/GameStateContext";
 import { useUIState } from "@/contexts/UIStateContext";
 import { useGameActions } from "@/contexts/GameActionsContext";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export default function GameModals() {
   const {
@@ -29,6 +32,9 @@ export default function GameModals() {
     currentScore,
   } = useGameState();
 
+  // Get user's subscription tier
+  const { tier: userTier } = useSubscription();
+
   const {
     initialized,
     showSettings,
@@ -37,6 +43,8 @@ export default function GameModals() {
     setShowLeaderboard,
     showStrategyCard,
     setShowStrategyCard,
+    showAdvancedAnalytics,
+    setShowAdvancedAnalytics,
     debugLogs,
   } = useUIState();
 
@@ -80,6 +88,14 @@ export default function GameModals() {
   const isBusted = (cards: { value: number }[]) => {
     const value = cards.reduce((sum, card) => sum + card.value, 0);
     return value > 21;
+  };
+
+  // Helper function to check if player has blackjack
+  const isBlackjack = (cards: { rank: string }[]) => {
+    if (cards.length !== 2) return false;
+    const hasAce = cards.some((c) => c.rank === "A");
+    const hasTen = cards.some((c) => ["10", "J", "Q", "K"].includes(c.rank));
+    return hasAce && hasTen;
   };
 
   // Helper functions to check if player can split or double
@@ -215,7 +231,7 @@ export default function GameModals() {
                 e.currentTarget.style.transform = "scale(1)";
               }}
             >
-              View Split Hands
+              Expand
             </button>
           )}
         </>
@@ -226,7 +242,8 @@ export default function GameModals() {
         phase === "PLAYER_TURN" &&
         playerHand.cards.length > 0 &&
         !playerFinished &&
-        !isBusted(playerHand.cards) && (
+        !isBusted(playerHand.cards) &&
+        !isBlackjack(playerHand.cards) && (
           <PlayerActionsModal
             onHit={hit}
             onStand={stand}
@@ -236,6 +253,8 @@ export default function GameModals() {
             canDouble={canDoubleHand}
             canSplit={canSplitHand}
             canSurrender={canSurrenderHand}
+            playerCards={playerHand.cards}
+            dealerUpCard={dealerHand.cards[0]}
           />
         )}
 
@@ -249,6 +268,7 @@ export default function GameModals() {
           // Note: Changing settings mid-game would require game reset
           // For now, settings only apply to new games
         }}
+        userTier={userTier}
       />
 
       {/* Leaderboard Modal */}
@@ -274,6 +294,16 @@ export default function GameModals() {
 
       {/* Debug Log Modal and Button */}
       <DebugLogModal debugLogs={debugLogs} phase={phase} />
+
+      {/* Session Stats Modal */}
+      <SessionStatsModal />
+
+      {/* Advanced Analytics Modal - Gold+ subscribers */}
+      <AdvancedAnalyticsModal
+        isOpen={showAdvancedAnalytics}
+        onClose={() => setShowAdvancedAnalytics(false)}
+        handHistory={[]} // TODO: Integrate with useHandHistory for real data
+      />
     </>
   );
 }

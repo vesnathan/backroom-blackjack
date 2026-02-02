@@ -1,0 +1,21 @@
+# Supporter information for the supporters page
+type Supporter @aws_cognito_user_pools @aws_iam {
+  userId: ID!
+  username: String!
+  tier: SubscriptionTier!
+  earlyAdopter: Boolean
+  subscribedSince: AWSDateTime
+}
+
+# Tiered response for supporters page display
+type SupportersResponse @aws_cognito_user_pools @aws_iam {
+  platinum: [Supporter!]!
+  gold: [Supporter!]!
+  silver: [Supporter!]!
+  bronze: [Supporter!]!
+  totalCount: Int!
+}
+
+extend type Query {
+  getSupporters: SupportersResponse @aws_cognito_user_pools @aws_iam
+}

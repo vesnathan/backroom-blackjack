@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 interface WinLossBubbleProps {
-  result?: "win" | "lose" | "push" | "blackjack";
+  result?: "win" | "lose" | "push" | "blackjack" | "surrender";
   message?: string;
   position: { left: string; top: string };
   onComplete?: () => void;
+  amount?: number; // Profit/loss amount to display
 }
 
 export default function WinLossBubble({
@@ -14,6 +15,7 @@ export default function WinLossBubble({
   message,
   position,
   onComplete,
+  amount,
 }: WinLossBubbleProps) {
   const [visible, setVisible] = useState(true);
 
@@ -28,15 +30,25 @@ export default function WinLossBubble({
   const getMessage = () => {
     if (message) return message;
 
+    // Format amount string if provided
+    const amountStr =
+      amount !== undefined
+        ? amount >= 0
+          ? ` +$${amount}`
+          : ` -$${Math.abs(amount)}`
+        : "";
+
     switch (result) {
       case "win":
-        return "WIN!";
+        return `WIN!${amountStr}`;
       case "lose":
-        return "LOSE";
+        return `LOSE${amountStr}`;
       case "push":
         return "PUSH";
       case "blackjack":
-        return "BLACKJACK!";
+        return `BLACKJACK!${amountStr}`;
+      case "surrender":
+        return `SURRENDER${amountStr}`;
       default:
         return "";
     }
@@ -52,6 +64,7 @@ export default function WinLossBubble({
       case "lose":
         return "#F44336"; // Red
       case "push":
+      case "surrender":
         return "#FFC107"; // Yellow
       default:
         return "#FFF";

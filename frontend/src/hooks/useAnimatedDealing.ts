@@ -540,6 +540,7 @@ export function useAnimatedDealing(
     numDecks,
     onDealingComplete,
     registerTimeout,
+    dealSpeed,
   ]);
 
   return {

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Card Counting Trainer Cognito User Pool Resources"
+Description: "Backroom Blackjack Cognito User Pool Resources"
 
 Parameters:
   Stage:
@@ -12,9 +12,46 @@ Parameters:
     Type: String
     Description: ARN of the PostConfirmation Lambda function
     Default: ""
+  PreSignUpLambdaArn:
+    Type: String
+    Description: ARN of the PreSignUp Lambda function for account conflict handling
+    Default: ""
+  AdminEmail:
+    Type: String
+    Description: Email for the admin user
+    Default: "vesnathan+bb-admin@gmail.com"
+  TestUserEmail:
+    Type: String
+    Description: Email for the test user
+    Default: "vesnathan+bb-user@gmail.com"
+  DefaultPassword:
+    Type: String
+    Description: Default password for created users
+    Default: "Temp1234!"
+    NoEcho: true
+  AppSyncApiId:
+    Type: String
+    Description: AppSync API ID for IAM policy (optional - passed after AppSync is created)
+    Default: ""
+  GoogleClientId:
+    Type: String
+    Description: Google OAuth Client ID
+    Default: ""
+  GoogleClientSecret:
+    Type: String
+    Description: Google OAuth Client Secret
+    NoEcho: true
+    Default: ""
+  AppDomain:
+    Type: String
+    Description: Production app domain (e.g., backroom-blackjack.com)
+    Default: "backroom-blackjack.com"
 
 Conditions:
   HasPostConfirmationLambda: !Not [!Equals [!Ref PostConfirmationLambdaArn, ""]]
+  HasPreSignUpLambda: !Not [!Equals [!Ref PreSignUpLambdaArn, ""]]
+  HasAppSyncApiId: !Not [!Equals [!Ref AppSyncApiId, ""]]
+  HasGoogleAuth: !Not [!Equals [!Ref GoogleClientId, ""]]
 
 Resources:
   UserPool:
@@ -33,6 +70,10 @@ Resources:
       UserPoolTags:
         Stack: !Sub "cct-${Stage}"
       LambdaConfig:
+        PreSignUp: !If
+          - HasPreSignUpLambda
+          - !Ref PreSignUpLambdaArn
+          - !Ref AWS::NoValue
         PostConfirmation: !If
           - HasPostConfirmationLambda
           - !Ref PostConfirmationLambdaArn
@@ -45,6 +86,199 @@ Resources:
       Domain: !Sub "cct-${Stage}"
       UserPoolId: !Ref UserPool
 
+  # Cognito Groups
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      Description: Administrator users
+      UserPoolId: !Ref UserPool
+
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: user
+      Description: Regular users
+      UserPoolId: !Ref UserPool
+
+  # IAM Role for User Setup Lambda
+  UserSetupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-user-setup-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoUserManagement
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminGetUser
+                Resource: !GetAtt UserPool.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-user-setup-${Stage}:*"
+
+  # Lambda to create users
+  UserSetupLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-user-setup-${Stage}"
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !GetAtt UserSetupLambdaRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          const { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminSetUserPasswordCommand, AdminAddUserToGroupCommand, AdminGetUserCommand } = require('@aws-sdk/client-cognito-identity-provider');
+          const https = require('https');
+          const url = require('url');
+
+          const cognito = new CognitoIdentityProviderClient({});
+
+          async function createUser(userPoolId, email, password, group) {
+            try {
+              // Check if user exists
+              try {
+                await cognito.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: email }));
+                console.log(`User ${email} already exists`);
+                return { created: false, email };
+              } catch (e) {
+                if (e.name !== 'UserNotFoundException') throw e;
+              }
+
+              // Create user
+              await cognito.send(new AdminCreateUserCommand({
+                UserPoolId: userPoolId,
+                Username: email,
+                TemporaryPassword: password,
+                UserAttributes: [
+                  { Name: 'email', Value: email },
+                  { Name: 'email_verified', Value: 'true' }
+                ],
+                MessageAction: 'SUPPRESS'
+              }));
+
+              // Set permanent password
+              await cognito.send(new AdminSetUserPasswordCommand({
+                UserPoolId: userPoolId,
+                Username: email,
+                Password: password,
+                Permanent: true
+              }));
+
+              // Add to group
+              await cognito.send(new AdminAddUserToGroupCommand({
+                UserPoolId: userPoolId,
+                Username: email,
+                GroupName: group
+              }));
+
+              console.log(`Created user ${email} in group ${group}`);
+              return { created: true, email, group };
+            } catch (e) {
+              console.error(`Error creating user ${email}:`, e);
+              throw e;
+            }
+          }
+
+          function sendResponse(event, context, status, data) {
+            const body = JSON.stringify({
+              Status: status,
+              Reason: `See CloudWatch Log Stream: ${context.logStreamName}`,
+              PhysicalResourceId: context.logStreamName,
+              StackId: event.StackId,
+              RequestId: event.RequestId,
+              LogicalResourceId: event.LogicalResourceId,
+              Data: data
+            });
+
+            const parsedUrl = url.parse(event.ResponseURL);
+            const options = {
+              hostname: parsedUrl.hostname,
+              port: 443,
+              path: parsedUrl.path,
+              method: 'PUT',
+              headers: { 'Content-Type': '', 'Content-Length': body.length }
+            };
+
+            return new Promise((resolve, reject) => {
+              const req = https.request(options, resolve);
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
+          }
+
+          exports.handler = async (event, context) => {
+            console.log('Event:', JSON.stringify(event));
+
+            if (event.RequestType === 'Delete') {
+              return sendResponse(event, context, 'SUCCESS', {});
+            }
+
+            try {
+              const { UserPoolId, AdminEmail, TestUserEmail, DefaultPassword } = event.ResourceProperties;
+
+              const results = [];
+              if (AdminEmail) {
+                results.push(await createUser(UserPoolId, AdminEmail, DefaultPassword, 'admin'));
+              }
+              if (TestUserEmail) {
+                results.push(await createUser(UserPoolId, TestUserEmail, DefaultPassword, 'user'));
+              }
+
+              return sendResponse(event, context, 'SUCCESS', { Users: JSON.stringify(results) });
+            } catch (e) {
+              console.error('Error:', e);
+              return sendResponse(event, context, 'FAILED', { Error: e.message });
+            }
+          };
+
+  # Custom Resource to trigger user creation
+  UserSetupCustomResource:
+    Type: Custom::UserSetup
+    DependsOn:
+      - AdminGroup
+      - UserGroup
+    Properties:
+      ServiceToken: !GetAtt UserSetupLambda.Arn
+      UserPoolId: !Ref UserPool
+      AdminEmail: !Ref AdminEmail
+      TestUserEmail: !Ref TestUserEmail
+      DefaultPassword: !Ref DefaultPassword
+
+  # Google Identity Provider (conditional)
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogleAuth
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "profile email openid"
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+        username: sub
+
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
@@ -53,12 +287,15 @@ Resources:
       GenerateSecret: false
       SupportedIdentityProviders:
         - COGNITO
+        - !If [HasGoogleAuth, Google, !Ref "AWS::NoValue"]
       CallbackURLs:
         - "http://localhost:3001"
-        - "https://cardcounting.example.com"  # TODO: Update with actual domain
+        - !Sub "https://${AppDomain}"
+        - !Sub "https://www.${AppDomain}"
       LogoutURLs:
         - "http://localhost:3001"
-        - "https://cardcounting.example.com"  # TODO: Update with actual domain
+        - !Sub "https://${AppDomain}"
+        - !Sub "https://www.${AppDomain}"
       AllowedOAuthFlows:
         - code
       AllowedOAuthScopes:
@@ -67,6 +304,84 @@ Resources:
         - profile
         - aws.cognito.signin.user.admin
       AllowedOAuthFlowsUserPoolClient: true
+
+  # Identity Pool for IAM-based auth (allows unauthenticated access)
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub "backroom_blackjack_identity_pool_${Stage}"
+      AllowUnauthenticatedIdentities: true
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt AuthenticatedRole.Arn
+        unauthenticated: !GetAtt UnauthenticatedRole.Arn
+
+  # IAM Role for authenticated users
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-authenticated-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+        - PolicyName: AuthenticatedAppSyncPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource: !If
+                  - HasAppSyncApiId
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${AppSyncApiId}/*"
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*"
+
+  # IAM Role for unauthenticated users (guest access)
+  UnauthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-unauthenticated-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: unauthenticated
+      Policies:
+        - PolicyName: UnauthenticatedAppSyncPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource: !If
+                  - HasAppSyncApiId
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${AppSyncApiId}/*"
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*"
 
 Outputs:
   UserPoolId:
@@ -88,3 +403,7 @@ Outputs:
   UserPoolDomain:
     Description: Domain prefix for the Cognito User Pool
     Value: !Ref UserPoolDomain
+
+  IdentityPoolId:
+    Description: ID of the Cognito Identity Pool
+    Value: !Ref IdentityPool

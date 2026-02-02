@@ -1,3 +1,6 @@
+/* eslint-disable sonarjs/no-duplicate-string */
+// Dialogue files naturally contain repeated phrases - this is intentional
+
 // ==============================
 // Conversations: Players ↔ Dealers
 // ==============================
@@ -470,6 +473,395 @@ export const DEALER_PLAYER_CONVERSATIONS: Record<
 };
 
 // ==============================
+// Dealer Action Comments (Per AI Personality)
+// ==============================
+
+export type DealerPersonality =
+  | "counter"
+  | "friendly"
+  | "strict"
+  | "oblivious"
+  | "veteran"
+  | "rookie";
+export type AIPersonality =
+  | "drunk"
+  | "clumsy"
+  | "chatty"
+  | "superstitious"
+  | "cocky"
+  | "nervous"
+  | "lucky"
+  | "unlucky";
+export type PlayerAction =
+  | "hit"
+  | "stand"
+  | "double"
+  | "split"
+  | "bust"
+  | "blackjack"
+  | "win"
+  | "lose"
+  | "push";
+
+/** Dealer comments on player actions - organized by dealer personality */
+export const DEALER_ACTION_COMMENTS: Record<
+  DealerPersonality,
+  Record<AIPersonality, Partial<Record<PlayerAction, string[]>>>
+> = {
+  // ========== MARIA (counter) - Sympathetic, knows the game ==========
+  counter: {
+    drunk: {
+      hit: ["Easy does it, Danny.", "One more card coming."],
+      bust: ["Happens to everyone. Especially after drinks."],
+      blackjack: ["Nice one. Lucky timing."],
+      win: ["Good hand, Danny."],
+      lose: ["Maybe pace yourself a bit?"],
+    },
+    clumsy: {
+      hit: ["Card coming your way, Claire. Carefully now."],
+      bust: ["It's okay, Claire. Shake it off."],
+      blackjack: ["Beautiful! Don't knock it over celebrating!"],
+      win: ["Nicely done. Chips coming your way."],
+      lose: ["Next hand, Claire. Keep your head up."],
+    },
+    chatty: {
+      hit: ["Here you go, Carlos.", "Card for Carlos."],
+      stand: ["Good decision.", "Smart play."],
+      blackjack: ["There's your headline, Carlos!"],
+      win: ["Something to talk about now."],
+    },
+    superstitious: {
+      hit: ["The cards will reveal themselves, Susan."],
+      stand: ["Trusting the energy. I respect that."],
+      blackjack: ["Looks like the crystals paid off."],
+      win: ["The universe provides, right?"],
+      lose: ["Mercury must be acting up."],
+    },
+    cocky: {
+      hit: ["Card for the legend.", "Here you go, Kyle."],
+      bust: ["Even the best have off hands."],
+      blackjack: ["There it is. As expected?"],
+      win: ["Skill recognized.", "Good read."],
+      lose: ["Variance catches up with everyone."],
+    },
+    nervous: {
+      hit: ["Nice and easy, Nancy. You're doing fine."],
+      stand: ["Smart. Trust yourself."],
+      bust: ["Deep breath. It's just one hand."],
+      blackjack: ["See? Nothing to worry about!"],
+      win: ["You earned that. Relax a little!"],
+    },
+    lucky: {
+      hit: ["Let's see what luck brings.", "Here comes your card."],
+      blackjack: ["Of course. The streak continues!"],
+      win: ["Must be nice, Larry!", "Luck loves you today."],
+    },
+    unlucky: {
+      hit: ["Maybe this is the turnaround, Ursula."],
+      bust: ["Tough break. Next one's yours."],
+      blackjack: ["Finally! About time, right?"],
+      win: ["Breaking the curse! Nice!"],
+      lose: ["Hang in there. The math evens out."],
+    },
+  },
+
+  // ========== MARCUS (friendly) - Jovial, supportive ==========
+  friendly: {
+    drunk: {
+      hit: ["One more for Danny! Let's goooo!"],
+      bust: ["Ouch! More drinks, less thinking about it!"],
+      blackjack: ["BOOM! The drunk master strikes!"],
+      win: ["That's what I'm talking about!"],
+      lose: ["Ah, it's just chips. We're having fun!"],
+    },
+    clumsy: {
+      hit: ["Sliding one over... carefully!", "Card for you, Claire!"],
+      bust: ["No worries! Everyone busts sometimes!"],
+      blackjack: ["Woohoo! That's a winner! Celebrate responsibly!"],
+      win: ["Great job, Claire!"],
+    },
+    chatty: {
+      hit: ["Another story, another card!", "Here's yours, Carlos!"],
+      blackjack: ["Now THAT'S content! Blackjack!"],
+      win: ["Network that win, my friend!"],
+    },
+    superstitious: {
+      hit: ["The cards have spoken!", "One more for Susan!"],
+      stand: ["Feeling it? I trust you!"],
+      blackjack: ["The crystals came through!"],
+      win: ["Good vibes pay off!"],
+    },
+    cocky: {
+      hit: ["For the shark!", "One for Kyle!"],
+      bust: ["Hey, even sharks miss sometimes!"],
+      blackjack: ["There it is! Looking good, Kyle!"],
+      win: ["Living up to the reputation!"],
+    },
+    nervous: {
+      hit: ["You got this, Nancy! One card!"],
+      stand: ["Smart call! Trust your gut!"],
+      bust: ["Hey, it's all good! Just a game!"],
+      blackjack: ["YES! See? Nothing to worry about!"],
+      win: ["You're a natural! Relax!"],
+    },
+    lucky: {
+      hit: ["Let's add to the legend!", "Here comes magic!"],
+      blackjack: ["ANOTHER ONE?! Unbelievable!"],
+      win: ["The streak is REAL!"],
+    },
+    unlucky: {
+      hit: ["This could be the one!", "Sending good vibes!"],
+      bust: ["Aw man. It'll turn around, I promise!"],
+      blackjack: ["FINALLY! THE CURSE IS BROKEN!"],
+      win: ["About time! You deserve this!"],
+    },
+  },
+
+  // ========== HAROLD (strict) - Curt, suspicious ==========
+  strict: {
+    drunk: {
+      hit: ["Card.", "One more. Watch your drink."],
+      bust: ["Bust. Clear your bet."],
+      blackjack: ["Blackjack. Pays three to two."],
+      win: ["Winner. Chips coming."],
+      lose: ["Loser. Next hand."],
+    },
+    clumsy: {
+      hit: ["Card. Keep your hands clear."],
+      bust: ["Bust. Don't knock anything over."],
+      blackjack: ["Blackjack. Celebrate away from the layout."],
+    },
+    chatty: {
+      hit: ["Card. Less talking, more playing."],
+      stand: ["Standing. Good."],
+      blackjack: ["Blackjack. Save the speech."],
+    },
+    superstitious: {
+      hit: ["Card. No rituals, please."],
+      stand: ["Standing. Let's move."],
+      blackjack: ["Blackjack. Skip the ceremony."],
+    },
+    cocky: {
+      hit: ["Card.", "One more."],
+      bust: ["Bust. Happens to everyone."],
+      blackjack: ["Blackjack. Quiet confidence, please."],
+      lose: ["Loser. The house wins."],
+    },
+    nervous: {
+      hit: ["Card. Decision, please.", "One more."],
+      stand: ["Standing. Good choice."],
+      bust: ["Bust. Next hand."],
+    },
+    lucky: {
+      hit: ["Card.", "One more."],
+      blackjack: ["Blackjack. Let's not get carried away."],
+      win: ["Winner. Keep it moving."],
+    },
+    unlucky: {
+      hit: ["Card."],
+      bust: ["Bust. Next."],
+      blackjack: ["Blackjack. Finally."],
+    },
+  },
+
+  // ========== JENNY (rookie) - Sweet but nervous herself ==========
+  rookie: {
+    drunk: {
+      hit: ["Um, here's your card! Is that good?"],
+      bust: ["Oh no, that's a bust! Sorry!"],
+      blackjack: ["Wow, blackjack! That's exciting!"],
+    },
+    clumsy: {
+      hit: ["Here you go! *slides carefully*"],
+      bust: ["Aww, bust. That's okay, I mess up too!"],
+      blackjack: ["Blackjack! Oh that's so cool!"],
+    },
+    chatty: {
+      hit: ["One card for you! Did I do that right?"],
+      stand: ["Standing? Okay! Got it!"],
+      blackjack: ["Blackjack! I love when that happens!"],
+    },
+    superstitious: {
+      hit: ["Here's your card! Hope it's a good one!"],
+      blackjack: ["Blackjack! Your crystals work!"],
+    },
+    cocky: {
+      hit: ["Card for you, sir.", "Here you go..."],
+      bust: ["Oh, bust. That's... um, unlucky?"],
+      blackjack: ["Blackjack! You're really good!"],
+    },
+    nervous: {
+      hit: ["Don't worry, you're doing great! Here's your card!"],
+      stand: ["Good choice! I think? I'm still learning too!"],
+      blackjack: ["Blackjack! See? Nothing to worry about!"],
+    },
+    lucky: {
+      hit: ["Another card! You're so lucky!"],
+      blackjack: ["AGAIN?! How do you do that?!"],
+    },
+    unlucky: {
+      hit: ["Here you go... fingers crossed!"],
+      bust: ["Oh no... I'm sorry! Maybe next time?"],
+      blackjack: ["Finally! I was rooting for you!"],
+    },
+  },
+
+  // ========== FRANK (oblivious) - Distracted, autopilot ==========
+  oblivious: {
+    drunk: {
+      hit: ["Card.", "Here."],
+      bust: ["Bust. Next.", "Over."],
+      blackjack: ["Blackjack... nice."],
+    },
+    clumsy: {
+      hit: ["Card.", "One more."],
+      bust: ["Bust.", "That's... 22."],
+    },
+    chatty: {
+      hit: ["Card.", "Mm-hmm."],
+      stand: ["Standing. Okay."],
+    },
+    superstitious: {
+      hit: ["Card.", "Here."],
+      blackjack: ["Blackjack.", "Winners."],
+    },
+    cocky: {
+      hit: ["Card.", "One more."],
+      bust: ["Bust."],
+      blackjack: ["Blackjack."],
+    },
+    nervous: {
+      hit: ["Card.", "Here you go."],
+      stand: ["Okay.", "Standing."],
+    },
+    lucky: {
+      hit: ["Card.", "Sure."],
+      blackjack: ["Blackjack again... huh."],
+    },
+    unlucky: {
+      hit: ["Card."],
+      bust: ["Bust."],
+      blackjack: ["Oh, blackjack."],
+    },
+  },
+
+  // ========== LISA (veteran) - Professional, measured ==========
+  veteran: {
+    drunk: {
+      hit: ["One more for Danny.", "Card coming."],
+      bust: ["Bust. Pace yourself out there."],
+      blackjack: ["Blackjack. Well timed."],
+      win: ["Winner. Nice hand."],
+    },
+    clumsy: {
+      hit: ["Card for Claire.", "Here you go."],
+      bust: ["Bust. Happens to the best of us."],
+      blackjack: ["Blackjack, Claire. Congratulations."],
+    },
+    chatty: {
+      hit: ["Card for Carlos.", "One more."],
+      stand: ["Standing. Good read."],
+      blackjack: ["Blackjack. Something to talk about."],
+    },
+    superstitious: {
+      hit: ["Card for Susan.", "Here you go."],
+      stand: ["Standing. Trust your instincts."],
+      blackjack: ["Blackjack. The cards aligned."],
+    },
+    cocky: {
+      hit: ["Card, Kyle.", "One more."],
+      bust: ["Bust. It happens."],
+      blackjack: ["Blackjack. Clean hand."],
+      win: ["Winner. Good strategy."],
+    },
+    nervous: {
+      hit: ["Card for Nancy. Take your time.", "One more."],
+      stand: ["Standing. Smart play."],
+      bust: ["Bust. Don't overthink it."],
+      blackjack: ["Blackjack! See? You've got this."],
+    },
+    lucky: {
+      hit: ["Let's see what you draw.", "Card coming."],
+      blackjack: ["Another blackjack. Impressive run."],
+      win: ["Winner again. Ride it while it lasts."],
+    },
+    unlucky: {
+      hit: ["Here you go, Ursula.", "One more."],
+      bust: ["Bust. The math will turn."],
+      blackjack: ["Blackjack! There you go."],
+      win: ["Winner. About time, right?"],
+    },
+  },
+};
+
+/** Dealer reactions to player quirks (personality-specific behaviors) */
+export const DEALER_QUIRK_REACTIONS: Record<
+  DealerPersonality,
+  Record<AIPersonality, string[]>
+> = {
+  counter: {
+    drunk: ["Take your time, Danny.", "Steady there."],
+    clumsy: ["No rush, Claire. Careful with those.", "I'll wait."],
+    chatty: ["Great story, Carlos. Decision when you're ready."],
+    superstitious: ["Your ritual, Susan. Go ahead."],
+    cocky: ["Confidence noted, Kyle.", "Bold."],
+    nervous: ["You're fine, Nancy. Deep breath."],
+    lucky: ["The streak is real, huh?", "Lucky charm working."],
+    unlucky: ["Hang in there, Ursula.", "The turn is coming."],
+  },
+  friendly: {
+    drunk: ["Ha! Classic Danny!", "You're killing me, Danny!"],
+    clumsy: ["Whoops! No worries, we got it!", "Happens to everyone!"],
+    chatty: ["Love the energy, Carlos!", "Tell me more later!"],
+    superstitious: ["Whatever works, Susan!", "I believe!"],
+    cocky: ["Big talk! Back it up, Kyle!", "Show me what you got!"],
+    nervous: ["Relax, you're among friends!", "It's just cards!"],
+    lucky: ["Must be nice! Share some luck!", "Unbelievable!"],
+    unlucky: ["Your time is coming, I feel it!", "Stay positive!"],
+  },
+  strict: {
+    drunk: ["Hands on the felt, please.", "Focus, Danny."],
+    clumsy: ["Keep the area clear, please.", "Careful."],
+    chatty: ["Less talking. Decision, please.", "Save it for later."],
+    superstitious: ["No rituals. Let's move.", "Cards only on the layout."],
+    cocky: ["Quiet confidence works better.", "Less talk."],
+    nervous: ["Decision. We need to keep moving.", "Decide, please."],
+    lucky: ["Everyone's luck runs out.", "Keep it moving."],
+    unlucky: ["We don't need commentary.", "Next hand."],
+  },
+  rookie: {
+    drunk: ["Um, are you okay? Should I get water?", "Ha ha, funny!"],
+    clumsy: ["Oh! Let me help! No, wait, I'll make it worse!"],
+    chatty: ["Wow, that's so interesting! I mean, focus, right?"],
+    superstitious: ["Those crystals are pretty! What do they do?"],
+    cocky: ["You're really good at this! Teach me sometime?"],
+    nervous: ["Same! I get nervous too! We can be nervous together!"],
+    lucky: ["How do you DO that?! Is it a trick?!"],
+    unlucky: ["Aww, that's so sad! I'm rooting for you!"],
+  },
+  oblivious: {
+    drunk: ["Hmm.", "Okay."],
+    clumsy: ["...", "It's fine."],
+    chatty: ["Mm-hmm.", "Uh-huh."],
+    superstitious: ["Sure.", "Okay."],
+    cocky: ["Right.", "Yeah."],
+    nervous: ["You're fine.", "Relax."],
+    lucky: ["Huh.", "Nice."],
+    unlucky: ["That happens.", "Yeah."],
+  },
+  veteran: {
+    drunk: ["Seen it before, Danny. Keep it together."],
+    clumsy: ["It's fine. I'll adjust.", "No harm done."],
+    chatty: ["Good stories. Save some for later."],
+    superstitious: ["Your ritual, your business.", "Noted."],
+    cocky: ["Confidence is good. Overconfidence, less so."],
+    nervous: ["Twenty-five years, I've seen it all. Relax."],
+    lucky: ["Impressive streak. Don't get attached."],
+    unlucky: ["Variance. It corrects itself. Stay patient."],
+  },
+};
+
+// ==============================
 // Optional: Convenience APIs
 // ==============================
 
@@ -483,4 +875,32 @@ export function getDealerPlayerLine(
     DEALER_PLAYER_CONVERSATIONS.generic;
   const arr = (tpl[category] ?? []) as string[];
   return arr.length ? pick(arr) : "";
+}
+
+/** Get a dealer's comment on a specific player's action */
+export function getDealerActionComment(
+  dealerPersonality: DealerPersonality,
+  aiPersonality: AIPersonality,
+  action: PlayerAction,
+): string | null {
+  const dealerComments = DEALER_ACTION_COMMENTS[dealerPersonality];
+  if (!dealerComments) return null;
+
+  const playerComments = dealerComments[aiPersonality];
+  if (!playerComments) return null;
+
+  const actionComments = playerComments[action];
+  if (!actionComments || actionComments.length === 0) return null;
+
+  return pick(actionComments);
+}
+
+/** Get a dealer's reaction to a player's quirky behavior */
+export function getDealerQuirkReaction(
+  dealerPersonality: DealerPersonality,
+  aiPersonality: AIPersonality,
+): string | null {
+  const reactions = DEALER_QUIRK_REACTIONS[dealerPersonality]?.[aiPersonality];
+  if (!reactions || reactions.length === 0) return null;
+  return pick(reactions);
 }

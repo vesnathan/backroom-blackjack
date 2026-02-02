@@ -41,7 +41,7 @@ import {
 } from "@aws-sdk/client-cloudformation";
 
 // Load environment variables from project root
-config({ path: path.resolve(__dirname, "../.env") });
+config({ path: path.resolve(import.meta.dirname, "../.env") });
 
 export class DeploymentManager {
   private awsUtils!: AwsUtils;
@@ -75,7 +75,7 @@ export class DeploymentManager {
     const stackTypeStr =
       getProjectConfig(stackType).packageDir || stackType.toLowerCase();
     const logFilePath = path.join(
-      __dirname,
+      import.meta.dirname,
       "../..",
       ".cache",
       "deploy",
@@ -712,10 +712,9 @@ export class DeploymentManager {
 
     // Add parameters based on stack type
     if (stackType !== StackType.WAF) {
-      // Corrected: Pass both stackType and stage
       allParameters.push({
         ParameterKey: "TemplateBucketName",
-        ParameterValue: getTemplateBucketName(stackType, stage),
+        ParameterValue: getTemplateBucketName(stage),
       });
     }
 
@@ -789,6 +788,28 @@ export class DeploymentManager {
     }
 
     // Add KMS parameters if stack depends on Shared (which provides KMS)
+    // Add Google OAuth parameters for Backroom Blackjack
+    if (stackType === StackType.Backroom_Blackjack) {
+      const googleClientId = process.env.GOOGLE_CLIENT_ID;
+      const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+      if (googleClientId && googleClientSecret) {
+        allParameters.push({
+          ParameterKey: "GoogleClientId",
+          ParameterValue: googleClientId,
+        });
+        allParameters.push({
+          ParameterKey: "GoogleClientSecret",
+          ParameterValue: googleClientSecret,
+        });
+        logger.info("Google OAuth parameters added to deployment");
+      } else if (googleClientId || googleClientSecret) {
+        logger.warning(
+          "Google OAuth partially configured. Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.",
+        );
+      }
+    }
+
     if (config.dependsOn?.includes(StackType.Shared)) {
       // Add KMS parameters from Shared stack
       const kmsKeyId =
@@ -845,10 +866,10 @@ export class DeploymentManager {
 
     if (projectConfig.requiresAdminUser && !options.skipUserCreation) {
       // Map StackType to the stackType parameter expected by UserSetupManager
-      let userStackType: "cardcountingtrainer" | undefined;
+      let userStackType: "backroom-blackjack" | undefined;
 
-      if (stackType === StackType.CardCountingTrainer) {
-        userStackType = "cardcountingtrainer";
+      if (stackType === StackType.Backroom_Blackjack) {
+        userStackType = "backroom-blackjack";
       }
 
       if (userStackType) {

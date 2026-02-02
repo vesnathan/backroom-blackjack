@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Card Counting Trainer Backend Infrastructure"
+Description: "Backroom Blackjack Backend Infrastructure"
 
 Parameters:
   Stage:
@@ -9,7 +9,7 @@ Parameters:
   AppName:
     Type: String
     Description: Application short name (used in export names)
-    Default: cardcountingtrainer
+    Default: backroom-blackjack
   TemplateBucketName:
     Type: String
     Description: Name of the S3 bucket containing nested stack templates
@@ -27,6 +27,75 @@ Parameters:
     Type: String
     Description: S3 key for Lambda code zip file
     Default: lambda/postConfirmation.zip
+  GetUploadUrlLambdaCodeKey:
+    Type: String
+    Description: S3 key for GetUploadUrl Lambda code zip file
+    Default: lambda/getUploadUrl.zip
+  SendInviteLambdaCodeKey:
+    Type: String
+    Description: S3 key for SendInvite Lambda code zip file
+    Default: lambda/sendInvite.zip
+  StripeWebhookCodeKey:
+    Type: String
+    Description: S3 key for Stripe webhook Lambda code
+    Default: lambda/stripeWebhook.zip
+  CreateCheckoutCodeKey:
+    Type: String
+    Description: S3 key for create checkout Lambda code
+    Default: lambda/createCheckout.zip
+  MonthlyStipendCodeKey:
+    Type: String
+    Description: S3 key for monthly stipend Lambda code
+    Default: lambda/monthlyStipend.zip
+  EarlyAdopterCheckCodeKey:
+    Type: String
+    Description: S3 key for early adopter check Lambda code
+    Default: lambda/earlyAdopterCheck.zip
+  CreateChipCheckoutCodeKey:
+    Type: String
+    Description: S3 key for create chip checkout Lambda code
+    Default: lambda/createChipCheckout.zip
+  PreSignUpLambdaCodeKey:
+    Type: String
+    Description: S3 key for PreSignUp Lambda code zip file
+    Default: lambda/cognitoPreSignUp.zip
+  DomainName:
+    Type: String
+    Description: Custom domain name for CloudFront (e.g., backroom-blackjack.com)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for domain validation
+    Default: ""
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN in us-east-1 for custom domain
+    Default: ""
+  AdminEmail:
+    Type: String
+    Description: Email for the admin user created during deployment
+    Default: "vesnathan+bb-admin@gmail.com"
+  TestUserEmail:
+    Type: String
+    Description: Email for the test user created during deployment
+  GoogleClientId:
+    Type: String
+    Description: Google OAuth Client ID
+    Default: ""
+  GoogleClientSecret:
+    Type: String
+    Description: Google OAuth Client Secret
+    NoEcho: true
+    Default: ""
+    Default: "vesnathan+bb-user@gmail.com"
+  DeployUserArn:
+    Type: String
+    Description: ARN of the IAM user used for deployments (for seed role trust)
+    Default: ""
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasDeployUser: !Not [!Equals [!Ref DeployUserArn, ""]]
 
 Resources:
   # DynamoDB Tables
@@ -60,16 +129,82 @@ Resources:
         LambdaCodeBucket: !Ref TemplateBucketName
         LambdaCodeKey: !Ref LambdaCodeKey
 
+  # PreSignUp Lambda for account conflict handling
+  PreSignUpLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/Lambda/preSignUp.yaml
+      Parameters:
+        Stage: !Ref Stage
+        AppName: !Ref AppName
+        LambdaCodeBucket: !Ref TemplateBucketName
+        LambdaCodeKey: !Ref PreSignUpLambdaCodeKey
+
+  # GetUploadUrl Lambda for Avatar Uploads
+  GetUploadUrlLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: S3Stack
+    Properties:
+      TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/Lambda/getUploadUrl.yaml
+      Parameters:
+        Stage: !Ref Stage
+        AppName: !Ref AppName
+        AvatarBucketName: !GetAtt S3Stack.Outputs.AvatarBucketName
+        AvatarBucketArn: !GetAtt S3Stack.Outputs.AvatarBucketArn
+        LambdaCodeBucket: !Ref TemplateBucketName
+        LambdaCodeKey: !Ref GetUploadUrlLambdaCodeKey
+
+  # SendInvite Lambda for Friend Invitations
+  SendInviteLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [DynamoDBStack, CloudFrontStack]
+    Properties:
+      TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/Lambda/sendInvite.yaml
+      Parameters:
+        Stage: !Ref Stage
+        AppName: !Ref AppName
+        TableName: !GetAtt DynamoDBStack.Outputs.DataTableName
+        TableArn: !GetAtt DynamoDBStack.Outputs.DataTableArn
+        LambdaCodeBucket: !Ref TemplateBucketName
+        LambdaCodeKey: !Ref SendInviteLambdaCodeKey
+        FrontendUrl: !If
+          - HasCustomDomain
+          - !Sub "https://${DomainName}"
+          - !Sub "https://${CloudFrontStack.Outputs.CloudFrontDomainName}"
+
+  # Subscription Lambda Functions (Stripe payments, webhooks, scheduled tasks)
+  SubscriptionsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: DynamoDBStack
+    Properties:
+      TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/Lambda/subscriptions.yaml
+      Parameters:
+        Stage: !Ref Stage
+        AppName: !Ref AppName
+        TableName: !GetAtt DynamoDBStack.Outputs.DataTableName
+        TableArn: !GetAtt DynamoDBStack.Outputs.DataTableArn
+        LambdaCodeBucket: !Ref TemplateBucketName
+        StripeWebhookCodeKey: !Ref StripeWebhookCodeKey
+        CreateCheckoutCodeKey: !Ref CreateCheckoutCodeKey
+        CreateChipCheckoutCodeKey: !Ref CreateChipCheckoutCodeKey
+        MonthlyStipendCodeKey: !Ref MonthlyStipendCodeKey
+        EarlyAdopterCheckCodeKey: !Ref EarlyAdopterCheckCodeKey
+
   # Cognito Resources
   CognitoStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: LambdaStack
+    DependsOn: [LambdaStack, PreSignUpLambdaStack]
     Properties:
       TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/Cognito/cognito.yaml
       Parameters:
         Stage: !Ref Stage
         AppName: !Ref AppName
         PostConfirmationLambdaArn: !GetAtt LambdaStack.Outputs.PostConfirmationFunctionArn
+        PreSignUpLambdaArn: !GetAtt PreSignUpLambdaStack.Outputs.PreSignUpFunctionArn
+        AdminEmail: !Ref AdminEmail
+        TestUserEmail: !Ref TestUserEmail
+        GoogleClientId: !Ref GoogleClientId
+        GoogleClientSecret: !Ref GoogleClientSecret
 
   # CloudFront Distribution
   CloudFrontStack:
@@ -83,11 +218,14 @@ Resources:
         AppBucketName: !GetAtt S3Stack.Outputs.FrontendBucketName
         AppBucketArn: !GetAtt S3Stack.Outputs.FrontendBucketArn
         AppBucketRegionalDomainName: !GetAtt S3Stack.Outputs.FrontendBucketRegionalDomainName
+        DomainName: !Ref DomainName
+        HostedZoneId: !Ref HostedZoneId
+        CertificateArn: !Ref CertificateArn
 
   # AppSync API
   AppSyncStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: [DynamoDBStack, CognitoStack]
+    DependsOn: [DynamoDBStack, CognitoStack, GetUploadUrlLambdaStack, SendInviteLambdaStack, SubscriptionsStack]
     Properties:
       TemplateURL: !Sub https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/resources/AppSync/appsync.yaml
       Parameters:
@@ -100,6 +238,52 @@ Resources:
         ResolversBuildHash: !Ref ResolversBuildHash
         SchemaHash: !Ref SchemaHash
         LogRetentionInDays: !Ref LogRetentionInDays
+        GetUploadUrlLambdaArn: !GetAtt GetUploadUrlLambdaStack.Outputs.GetUploadUrlFunctionArn
+        SendInviteLambdaArn: !GetAtt SendInviteLambdaStack.Outputs.SendInviteFunctionArn
+        CreateCheckoutLambdaArn: !GetAtt SubscriptionsStack.Outputs.CreateCheckoutFunctionArn
+        CreateChipCheckoutLambdaArn: !GetAtt SubscriptionsStack.Outputs.CreateChipCheckoutFunctionArn
+
+  # Seed Role - allows deploy user to seed database with test data
+  SeedRole:
+    Type: AWS::IAM::Role
+    Condition: HasDeployUser
+    DependsOn: [DynamoDBStack, CognitoStack]
+    Properties:
+      RoleName: !Sub "${AppName}-seed-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref DeployUserArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Sub "${AppName}-seed-${Stage}"
+      Policies:
+        - PolicyName: seed-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DynamoDBSeedAccess
+                Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt DynamoDBStack.Outputs.DataTableArn
+                  - !Sub "${DynamoDBStack.Outputs.DataTableArn}/index/*"
+              - Sid: CognitoReadAccess
+                Effect: Allow
+                Action:
+                  - cognito-idp:AdminGetUser
+                Resource:
+                  - !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoStack.Outputs.UserPoolId}"
 
 Outputs:
   ApiUrl:
@@ -125,6 +309,12 @@ Outputs:
     Value: !GetAtt CognitoStack.Outputs.UserPoolClientId
     Export:
       Name: !Sub "${AppName}-${Stage}-user-pool-client-id"
+
+  IdentityPoolId:
+    Description: "Cognito Identity Pool ID for IAM auth"
+    Value: !GetAtt CognitoStack.Outputs.IdentityPoolId
+    Export:
+      Name: !Sub "${AppName}-${Stage}-identity-pool-id"
 
   UserPoolDomain:
     Description: "Cognito User Pool Domain for OAuth"
@@ -161,3 +351,28 @@ Outputs:
     Value: !GetAtt CognitoStack.Outputs.UserPoolDomain
     Export:
       Name: !Sub "${AppName}-${Stage}-user-pool-domain"
+
+  AvatarBucketName:
+    Description: "S3 bucket for user avatar images"
+    Value: !GetAtt S3Stack.Outputs.AvatarBucketName
+    Export:
+      Name: !Sub "${AppName}-${Stage}-avatar-bucket"
+
+  StripeWebhookUrl:
+    Description: "Stripe webhook endpoint URL"
+    Value: !GetAtt SubscriptionsStack.Outputs.StripeWebhookUrl
+    Export:
+      Name: !Sub "${AppName}-${Stage}-stripe-webhook-url"
+
+  CreateCheckoutFunctionArn:
+    Description: "ARN of the create checkout Lambda function"
+    Value: !GetAtt SubscriptionsStack.Outputs.CreateCheckoutFunctionArn
+    Export:
+      Name: !Sub "${AppName}-${Stage}-create-checkout-arn"
+
+  SeedRoleArn:
+    Description: "ARN of the seed role for database seeding"
+    Condition: HasDeployUser
+    Value: !GetAtt SeedRole.Arn
+    Export:
+      Name: !Sub "${AppName}-${Stage}-seed-role-arn"

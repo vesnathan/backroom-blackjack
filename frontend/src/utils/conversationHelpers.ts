@@ -1,7 +1,11 @@
 import { ActiveConversation, SpeechBubble, AIPlayer } from "@/types/gameState";
 import { debugLog } from "@/utils/debug";
 import { getDealerPlayerLine, getPlayerEngagement } from "@/data/dialogue";
-import { TABLE_POSITIONS, DEALER_POSITION } from "@/constants/animations";
+import {
+  TABLE_POSITIONS,
+  DEALER_POSITION,
+  PIT_BOSS_POSITION,
+} from "@/constants/tablePositions";
 import { calculateHandValue } from "@/lib/gameActions";
 
 /**
@@ -81,18 +85,20 @@ export function createSpeechBubble(
     `💬 ${characterName} [Hand: ${handStr} (${handValue})]: "${message}"`,
   );
 
-  // Use dealer position if position is -1, otherwise use table seat position
+  // Use dealer position if position is -1, pit boss position if -2, otherwise use table seat position
   const [x, y] =
     position === -1
       ? DEALER_POSITION
-      : TABLE_POSITIONS[position] || TABLE_POSITIONS[0];
+      : position === -2
+        ? PIT_BOSS_POSITION
+        : TABLE_POSITIONS[position] || TABLE_POSITIONS[0];
 
   return {
     playerId,
     message,
     position: { left: `${x}%`, top: `${y}%` },
     visible: true,
-    isDealer: position === -1,
-    playerPosition: position === -1 ? undefined : position,
+    isDealer: position === -1 || position === -2, // Treat pit boss like dealer for bubble positioning
+    playerPosition: position >= 0 ? position : undefined,
   };
 }

@@ -31,8 +31,8 @@ const REGEX = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
 };
 
-// NOTE: This is Card Counting Trainer standalone deployment - only supports "cardcountingtrainer"
-export type StackTypeForUser = "cardcountingtrainer";
+// NOTE: This is Backroom Blackjack standalone deployment - only supports "backroom-blackjack"
+export type StackTypeForUser = "backroom-blackjack";
 
 // STACK_TYPE_CONFIG: Configuration mapping for user setup per stack type
 // When bootstrapping a new package, add an entry here with the stack's configuration
@@ -45,8 +45,8 @@ interface StackTypeConfig {
 }
 
 const STACK_TYPE_CONFIG: Record<StackTypeForUser, StackTypeConfig> = {
-  cardcountingtrainer: {
-    stackTypeEnum: StackType.CardCountingTrainer,
+  "backroom-blackjack": {
+    stackTypeEnum: StackType.Backroom_Blackjack,
     cognitoGroups: CCT_COGNITO_GROUPS,
     outputKey: "UserPoolId",
     adminGroup: "admin",
@@ -77,7 +77,7 @@ export class UserSetupManager {
   private region: string;
   private stackType: StackTypeForUser;
 
-  constructor(region = "ap-southeast-2", stackType: StackTypeForUser = "cardcountingtrainer") {
+  constructor(region = "ap-southeast-2", stackType: StackTypeForUser = "backroom-blackjack") {
     this.region = region;
     this.stackType = stackType;
     this.cognitoClient = new CognitoIdentityProviderClient({ region });
@@ -152,6 +152,165 @@ export class UserSetupManager {
     await this.validateUserCreation(userPoolId, tableName, cognitoUserId);
 
     logger.success("Admin user setup completed successfully!");
+  }
+
+  /**
+   * Creates a regular (non-admin) user in Cognito and DynamoDB
+   */
+  async createRegularUser(options: UserSetupOptions & { userEmail: string }): Promise<void> {
+    const { stage, userEmail, stackType } = options;
+
+    // Use the stackType from options if provided, otherwise use the instance's stackType
+    if (stackType) {
+      this.stackType = stackType;
+    }
+
+    logger.debug(
+      `Setting up regular user for stage: ${stage}, stackType: ${this.stackType}`,
+    );
+    logger.debug(`User email: '${userEmail}'`);
+
+    // Get user pool ID
+    const userPoolId = await this.getCognitoUserPoolId(stage);
+    logger.debug(`Found Cognito User Pool ID: ${userPoolId}`);
+
+    // Ensure required user groups exist
+    await this.ensureCognitoGroups(userPoolId, stage);
+
+    // Get user table name based on stack type
+    const appNameForTable = getAppNameForStackType(this.getStackTypeEnum());
+    const tableName = `${appNameForTable}-datatable-${stage}`;
+    await this.verifyTableExists(tableName);
+
+    // Create or get existing user (without admin privileges)
+    const cognitoUserId = await this.createOrGetRegularCognitoUser(
+      userPoolId,
+      userEmail,
+    );
+
+    // Create user in DynamoDb
+    await this.createUserInDynamoDb(tableName, cognitoUserId, userEmail);
+
+    // Validate user creation
+    await this.validateUserCreation(userPoolId, tableName, cognitoUserId);
+
+    logger.success("Regular user setup completed successfully!");
+  }
+
+  /**
+   * Creates a regular user in Cognito (added to 'user' group instead of 'admin')
+   */
+  private async createOrGetRegularCognitoUser(
+    userPoolId: string,
+    userEmail: string,
+  ): Promise<string> {
+    try {
+      // Check if user already exists
+      const getUserResponse = await this.cognitoClient.send(
+        new AdminGetUserCommand({
+          UserPoolId: userPoolId,
+          Username: userEmail,
+        }),
+      );
+
+      logger.info("User already exists in Cognito. Getting user ID...");
+      const subAttribute = getUserResponse.UserAttributes?.find(
+        (attr) => attr.Name === "sub",
+      );
+      if (!subAttribute?.Value) {
+        throw new Error("User exists but 'sub' attribute not found");
+      }
+      return subAttribute.Value;
+    } catch (error: any) {
+      const isUserNotFound =
+        error.name === "UserNotFoundException" ||
+        error.code === "UserNotFoundException" ||
+        error.message?.includes("UserNotFoundException") ||
+        (error.message && error.message.includes("User does not exist"));
+
+      if (isUserNotFound) {
+        logger.debug("User not found, creating new regular user...");
+        return await this.createNewRegularCognitoUser(userPoolId, userEmail);
+      }
+
+      logger.error(`Unexpected error in createOrGetRegularCognitoUser: ${error.name || error.code || error.message}`);
+      throw error;
+    }
+  }
+
+  private async createNewRegularCognitoUser(
+    userPoolId: string,
+    userEmail: string,
+  ): Promise<string> {
+    const tempPassword = "Temp1234!";
+
+    try {
+      logger.debug("Creating regular user in Cognito User Pool...");
+      const createUserResponse = await this.cognitoClient.send(
+        new AdminCreateUserCommand({
+          UserPoolId: userPoolId,
+          Username: userEmail,
+          TemporaryPassword: tempPassword,
+          UserAttributes: [
+            { Name: "email", Value: userEmail },
+            { Name: "email_verified", Value: "true" },
+          ],
+          MessageAction: "SUPPRESS",
+        }),
+      );
+
+      const subAttribute = createUserResponse.User?.Attributes?.find(
+        (attr) => attr.Name === "sub",
+      );
+      if (!subAttribute?.Value) {
+        throw new Error("User created but 'sub' attribute not found");
+      }
+      const cognitoUserId = subAttribute.Value;
+
+      logger.success(`Created regular user in Cognito with ID: ${cognitoUserId}`);
+
+      // Set permanent password
+      logger.debug("Setting permanent password...");
+      await this.cognitoClient.send(
+        new AdminSetUserPasswordCommand({
+          UserPoolId: userPoolId,
+          Username: userEmail,
+          Password: tempPassword,
+          Permanent: true,
+        }),
+      );
+
+      logger.success("Set permanent password for user");
+
+      // Add user to 'user' group (not admin)
+      logger.debug("Adding user to 'user' group...");
+      await this.cognitoClient.send(
+        new AdminAddUserToGroupCommand({
+          UserPoolId: userPoolId,
+          Username: userEmail,
+          GroupName: "user",
+        }),
+      );
+
+      logger.success("Added user to 'user' group");
+
+      // Display user information
+      logger.info("\n========== USER CREATED ==========");
+      logger.info(`Username: ${userEmail}`);
+      logger.info(`Password: ${tempPassword}`);
+      logger.info(`Group: user (regular user)`);
+      logger.warning(
+        "Please change this password after first login for security reasons.",
+      );
+      logger.info("===================================\n");
+
+      return cognitoUserId;
+    } catch (error) {
+      logger.error(
+        `Error creating regular Cognito user: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+      throw error;
+    }
   }
 
   private async getCognitoUserPoolId(stage: string): Promise<string> {

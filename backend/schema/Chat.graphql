@@ -1,0 +1,45 @@
+# Real-time chat system for players
+
+type ChatMessage {
+  id: ID!
+  channelId: ID!
+  senderId: ID!
+  senderUsername: String!
+  senderAvatarUrl: String
+  subscriptionTier: SubscriptionTier
+  content: String!
+  createdAt: AWSDateTime!
+}
+
+type ChatMessageConnection {
+  items: [ChatMessage!]!
+  nextToken: String
+}
+
+input SendChatMessageInput {
+  channelId: ID!
+  content: String!
+  # Optional: passed from frontend which has user data from subscription hook
+  senderAvatarUrl: String
+  subscriptionTier: SubscriptionTier
+}
+
+extend type Query {
+  # Get recent chat messages for a channel (global chat or table-specific)
+  getChatMessages(
+    channelId: ID!
+    limit: Int
+    nextToken: String
+  ): ChatMessageConnection @aws_cognito_user_pools
+}
+
+extend type Mutation {
+  # Send a chat message
+  sendChatMessage(input: SendChatMessageInput!): ChatMessage @aws_cognito_user_pools
+}
+
+extend type Subscription {
+  # Subscribe to new messages in a channel
+  onNewChatMessage(channelId: ID!): ChatMessage
+    @aws_subscribe(mutations: ["sendChatMessage"])
+}

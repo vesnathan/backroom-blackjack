@@ -10,6 +10,10 @@ interface UIState {
   showStrategyCard: boolean;
   showHeatMap: boolean;
   showCountPeek: boolean;
+  showSessionStats: boolean;
+  showAdvancedAnalytics: boolean;
+  showSubscribeBanner: boolean;
+  showChat: boolean;
   debugLogs: string[];
   showDebugLog: boolean;
   strategyCardUsedThisHand: boolean;
@@ -31,6 +35,10 @@ interface UIState {
   setShowHeatMap: (show: boolean) => void;
   setShowDealerInfo: (show: boolean) => void;
   setShowCountPeek: (show: boolean) => void;
+  setShowSessionStats: (show: boolean) => void;
+  setShowAdvancedAnalytics: (show: boolean) => void;
+  setShowSubscribeBanner: (show: boolean) => void;
+  setShowChat: (show: boolean) => void;
   setShowDebugLog: (show: boolean) => void;
   setDevTestingMode: (enabled: boolean) => void;
   clearDebugLogs: () => void;

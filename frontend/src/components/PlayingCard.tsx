@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+
 interface Card {
   suit: string;
   rank: string;
@@ -8,6 +10,22 @@ interface Card {
 interface PlayingCardProps {
   card: Card;
   faceDown?: boolean;
+}
+
+// Hook to check if we're on mobile
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(window.innerHeight < 500 || window.innerWidth < 900);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isMobile;
 }
 
 // Pip layouts for each rank (from reference project)
@@ -140,23 +158,7 @@ const getPipLayout = (rank: string): string[] => {
         "X",
       ];
     case "8":
-      return [
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-        "O",
-        "X",
-      ];
+      return ["X", "O", "X", "X", "O", "X", "X", "O", "X", "X", "O", "X"];
     case "9":
       return [
         "X",
@@ -198,7 +200,25 @@ const getPipLayout = (rank: string): string[] => {
   }
 };
 
+// Convert suit letter to Unicode symbol
+const getSuitSymbol = (suit: string): string => {
+  switch (suit) {
+    case "H":
+      return String.fromCharCode(9829); // ♥
+    case "D":
+      return String.fromCharCode(9830); // ♦
+    case "C":
+      return String.fromCharCode(9827); // ♣
+    case "S":
+      return String.fromCharCode(9824); // ♠
+    default:
+      return "";
+  }
+};
+
 export default function PlayingCard({ card, faceDown }: PlayingCardProps) {
+  const isMobile = useIsMobile();
+
   if (faceDown) {
     return (
       <div
@@ -215,28 +235,52 @@ export default function PlayingCard({ card, faceDown }: PlayingCardProps) {
     );
   }
 
-  // Convert suit letter to Unicode symbol and get suit code
-  const getSuitSymbol = (suit: string): string => {
-    switch (suit) {
-      case "H":
-        return String.fromCharCode(9829); // ♥
-      case "D":
-        return String.fromCharCode(9830); // ♦
-      case "C":
-        return String.fromCharCode(9827); // ♣
-      case "S":
-        return String.fromCharCode(9824); // ♠
-      default:
-        return "";
-    }
-  };
-
   const suitSymbol = getSuitSymbol(card.suit);
   const isRed = card.suit === "H" || card.suit === "D";
   const suitColor = isRed ? "red" : "rgb(0, 0, 0)";
   const isFaceCard = ["J", "Q", "K"].includes(card.rank);
   const isAce = card.rank === "A";
   const pipLayout = getPipLayout(card.rank);
+
+  // Mobile: Colored card with rank in white
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          position: "relative",
+          zIndex: 10,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            backgroundColor: suitColor,
+            borderRadius: "4px",
+            position: "absolute",
+            border: "1px solid rgba(0, 0, 0, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {/* Rank in white */}
+          <div
+            style={{
+              fontSize: "26px",
+              fontWeight: "bold",
+              color: "#FFFFFF",
+              textShadow: "1px 1px 2px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            {card.rank}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -330,19 +374,18 @@ export default function PlayingCard({ card, faceDown }: PlayingCardProps) {
         {/* Pip holder for center */}
         <div
           style={{
-            padding: "15%",
-            height: "100%",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            height: "100%",
           }}
         >
           {/* Face cards (J, Q, K) */}
           {isFaceCard && (
             <div
               style={{
-                width: "100%",
-                height: "100%",
+                width: "60%",
+                height: "60%",
                 backgroundImage: `url(/${card.rank}.svg)`,
                 backgroundSize: "contain",
                 backgroundRepeat: "no-repeat",
@@ -374,8 +417,8 @@ export default function PlayingCard({ card, faceDown }: PlayingCardProps) {
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)",
                 gridTemplateRows: "repeat(5, 1fr)",
-                width: "100%",
-                height: "100%",
+                width: "50%",
+                height: "50%",
                 textAlign: "center",
               }}
             >
@@ -397,7 +440,7 @@ export default function PlayingCard({ card, faceDown }: PlayingCardProps) {
                     {pip === "X" && (
                       <div
                         style={{
-                          fontSize: "18px",
+                          fontSize: "12px",
                           color: suitColor,
                           lineHeight: 1,
                         }}

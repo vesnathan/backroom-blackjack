@@ -11,7 +11,7 @@ const getRedirectSignIn = () => {
   }
   // Fallback for SSR
   return process.env.NEXT_PUBLIC_ENVIRONMENT === "prod"
-    ? "https://cardcounting.example.com" // TODO: Update with actual production domain
+    ? "https://backroom-blackjack.com"
     : "http://localhost:3001";
 };
 
@@ -20,9 +20,11 @@ export const AMPLIFY_CONFIG: ResourcesConfig = {
     Cognito: {
       userPoolId: DEPLOYMENT_OUTPUT.cctUserPoolId,
       userPoolClientId: DEPLOYMENT_OUTPUT.cctUserPoolClientId,
+      identityPoolId: DEPLOYMENT_OUTPUT.cctIdentityPoolId,
+      allowGuestAccess: true,
       loginWith: {
         oauth: {
-          domain: "nlmonorepo-cct-dev.auth.ap-southeast-2.amazoncognito.com", // TODO: Update after deployment
+          domain: `cct-${process.env.NEXT_PUBLIC_ENVIRONMENT || "dev"}.auth.ap-southeast-2.amazoncognito.com`,
           scopes: [
             "email",
             "openid",

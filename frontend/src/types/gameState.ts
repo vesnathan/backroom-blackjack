@@ -36,6 +36,7 @@ export interface SpeechBubble {
   hideTimeoutId?: number; // Timeout ID for hiding the bubble
   isDealer?: boolean; // True if this is a dealer speech bubble (changes pointer direction)
   playerPosition?: number; // Seat position (0-7), undefined for dealer
+  conversationId?: string; // Optional ID to group multi-turn conversations (for color coding)
 }
 
 /**
@@ -43,8 +44,9 @@ export interface SpeechBubble {
  */
 export interface WinLossBubbleData {
   id: string;
-  result: "win" | "lose" | "push" | "blackjack";
+  result: "win" | "lose" | "push" | "blackjack" | "surrender";
   position: { left: string; top: string };
+  amount?: number; // Profit/loss amount to display (positive for wins, negative for losses)
 }
 
 /**
@@ -84,3 +86,36 @@ export type GamePhase =
   | "DEALER_TURN" // Dealer playing their hand
   | "RESOLVING" // Calculating payouts and showing results
   | "ROUND_END"; // Hand complete, ready for next hand
+
+/**
+ * Player action type for decision tracking
+ */
+export type PlayerAction = "HIT" | "STAND" | "DOUBLE" | "SPLIT";
+
+/**
+ * Record of a single decision made during a hand
+ */
+export interface DecisionRecord {
+  action: PlayerAction;
+  recommended: PlayerAction;
+  isCorrect: boolean;
+  playerTotal: number;
+  isSoft: boolean;
+  dealerUpcard: string; // e.g., "7", "A"
+}
+
+/**
+ * Complete record of a played hand for analytics
+ */
+export interface HandRecord {
+  handId: number;
+  timestamp: number;
+  playerCards: string[]; // e.g., ["AS", "KH"]
+  dealerUpcard: string;
+  runningCount: number;
+  trueCount: number;
+  decisions: DecisionRecord[];
+  result: "WIN" | "LOSE" | "PUSH" | "BLACKJACK" | "BUST";
+  betAmount: number;
+  payout: number;
+}

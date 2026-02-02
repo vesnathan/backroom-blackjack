@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import {
   GameSettings,
   DealerPeekRule,
@@ -6,11 +7,28 @@ import {
   CountingSystem,
 } from "@/types/gameSettings";
 
+// Hook to check if we're on mobile
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(window.innerHeight < 500 || window.innerWidth < 900);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isMobile;
+}
+
 interface TableRulesProps {
   gameSettings: GameSettings;
 }
 
 export default function TableRules({ gameSettings }: TableRulesProps) {
+  const isMobile = useIsMobile();
   const getPeekRuleText = (rule: DealerPeekRule): string => {
     switch (rule) {
       case DealerPeekRule.AMERICAN_PEEK:
@@ -63,23 +81,25 @@ export default function TableRules({ gameSettings }: TableRulesProps) {
 
   return (
     <>
-      {/* Logo on the table */}
-      <img
-        src="/logo.png"
-        alt="Backroom Blackjack"
-        style={{
-          position: "absolute",
-          top: "calc(20% + 80px)",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: "180px",
-          height: "180px",
-          zIndex: 0,
-          pointerEvents: "none",
-          opacity: 0.4,
-          filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))",
-        }}
-      />
+      {/* Logo on the table - hidden on mobile */}
+      {!isMobile && (
+        <Image
+          src="/logo.webp"
+          alt="Backroom Blackjack"
+          width={180}
+          height={180}
+          style={{
+            position: "absolute",
+            top: "calc(20% + 80px)",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: -1,
+            pointerEvents: "none",
+            opacity: 0.4,
+            filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))",
+          }}
+        />
+      )}
       <svg
         style={{
           position: "absolute",
@@ -88,7 +108,7 @@ export default function TableRules({ gameSettings }: TableRulesProps) {
           transform: "translate(-50%, -50%)",
           width: "1200px",
           height: "200px",
-          zIndex: 0,
+          zIndex: -1,
           pointerEvents: "none",
         }}
         viewBox="0 0 1200 200"

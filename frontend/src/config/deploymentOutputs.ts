@@ -4,6 +4,7 @@ import environment from "./masterConfig";
 type CCTOutput = {
   cctUserPoolId: string;
   cctUserPoolClientId: string;
+  cctIdentityPoolId: string;
   cctGraphQLUrl: string;
 };
 
@@ -28,6 +29,7 @@ export function getDeploymentOutput<T extends keyof DeploymentOutputMap>(
       const deploymentOutput: CCTOutput = {
         cctUserPoolId: process.env.NEXT_PUBLIC_USER_POOL_ID || "",
         cctUserPoolClientId: process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID || "",
+        cctIdentityPoolId: process.env.NEXT_PUBLIC_IDENTITY_POOL_ID || "",
         cctGraphQLUrl: process.env.NEXT_PUBLIC_GRAPHQL_URL || "",
       };
 

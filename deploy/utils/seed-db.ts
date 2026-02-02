@@ -7,58 +7,22 @@ export interface SeedDBOptions {
   region: string;
   tableName: string;
   stage: string;
-  // optional application package folder name, e.g. 'aws-example' or 'cloudwatchlive'
-  appName?: string;
-  numCompanies?: number;
-  adminsPerCompany?: number;
-  staffPerAdmin?: number;
-  superAdminUserId?: string;
-  // Additional arbitrary positional args to pass to the per-package seeder
-  extraArgs?: string[];
-  // Additional environment variables to set when running the seeder
-  extraEnv?: Record<string, string>;
   skipConfirmation?: boolean;
-  // If true, do not actually spawn tsx; just resolve the script path and log the invocation.
-  dryRun?: boolean;
+  // ARN of the seed role to assume for permissions
+  seedRoleArn?: string;
+  // External ID for assuming the seed role
+  externalId?: string;
 }
 
 export async function seedDB(options: SeedDBOptions): Promise<void> {
-  const {
-    region,
-    tableName,
-    stage,
-    numCompanies,
-    adminsPerCompany,
-    staffPerAdmin,
-    superAdminUserId,
-    extraArgs,
-    extraEnv,
-    skipConfirmation = false,
-    appName = "aws-example",
-    dryRun = false,
-  } = options;
+  const { region, tableName, stage, skipConfirmation = false, seedRoleArn, externalId } = options;
 
-  logger.info(`🌱 Seeding data for app: ${appName}`);
+  logger.info(`🌱 Seeding database`);
   logger.info(`Region: ${region}`);
   logger.info(`Table: ${tableName}`);
   logger.info(`Stage: ${stage}`);
-  if (typeof numCompanies === "number") {
-    logger.info(`Event Companies: ${numCompanies}`);
-  }
-  if (typeof adminsPerCompany === "number") {
-    logger.info(`Admins per Company: ${adminsPerCompany}`);
-  }
-  if (typeof staffPerAdmin === "number") {
-    logger.info(`Staff per Admin: ${staffPerAdmin}`);
-  }
-  if (
-    typeof numCompanies === "number" &&
-    typeof adminsPerCompany === "number" &&
-    typeof staffPerAdmin === "number"
-  ) {
-    const totalUsers =
-      numCompanies * (1 + adminsPerCompany + adminsPerCompany * staffPerAdmin);
-    logger.info(`Total Users: ~${totalUsers}`);
+  if (seedRoleArn) {
+    logger.info(`Seed Role: ${seedRoleArn}`);
   }
 
   if (!skipConfirmation) {
@@ -69,83 +33,36 @@ export async function seedDB(options: SeedDBOptions): Promise<void> {
 
   logger.info("Starting seed process...");
 
-  // Resolve per-package seeder script. Try typical names in order.
-  const candidates = [
-    `../../${appName}/backend/scripts/seed-db.ts`,
-    `../../${appName}/backend/scripts/seed.ts`,
-    `../../${appName}/backend/scripts/seed-db.js`,
-  ];
+  // Resolve seeder script
+  const scriptPath = path.resolve(import.meta.dirname, "../../backend/scripts/seed-db.ts");
 
-  let scriptPath: string | null = null;
-  for (const rel of candidates) {
-    const abs = path.resolve(__dirname, rel);
-    if (fs.existsSync(abs)) {
-      scriptPath = abs;
-      break;
-    }
-  }
-
-  if (!scriptPath) {
-    const tried = candidates.map((c) => path.resolve(__dirname, c)).join("\n");
-    throw new Error(
-      `No seed script found for app '${appName}'. Tried:\n${tried}`,
-    );
+  if (!fs.existsSync(scriptPath)) {
+    throw new Error(`Seed script not found at: ${scriptPath}`);
   }
 
   logger.info(`Using seeder script: ${scriptPath}`);
 
-  const env = {
+  const env: Record<string, string | undefined> = {
     ...process.env,
     AWS_REGION: region,
     TABLE_NAME: tableName,
     STAGE: stage,
   };
 
-  const args: string[] = [scriptPath];
-
-  if (typeof numCompanies === "number") {
-    args.push(numCompanies.toString());
-  }
-  if (typeof adminsPerCompany === "number") {
-    args.push(adminsPerCompany.toString());
-  }
-  if (typeof staffPerAdmin === "number") {
-    args.push(staffPerAdmin.toString());
-  }
-  if (superAdminUserId) {
-    args.push(superAdminUserId);
-  }
-  // Append any extra positional args requested by caller
-  if (extraArgs && extraArgs.length > 0) {
-    args.push(...extraArgs.map((a) => String(a)));
-  }
-
-  // Merge extraEnv (caller-specified env vars) without removing previously set vars
-  const runEnv = { ...env, ...(extraEnv || {}) };
-
-  if (dryRun) {
-    logger.info("Dry-run enabled: not spawning tsx.");
-    logger.info(
-      `Would run: tsx ${args.map((a) => JSON.stringify(a)).join(" ")}`,
-    );
-    logger.info(
-      `With env: AWS_REGION=${runEnv.AWS_REGION}, TABLE_NAME=${runEnv.TABLE_NAME}, STAGE=${runEnv.STAGE}`,
-    );
-    if (extraEnv && Object.keys(extraEnv).length > 0) {
-      logger.info(`Extra env: ${JSON.stringify(extraEnv)}`);
+  // Add seed role credentials if provided
+  if (seedRoleArn) {
+    env.SEED_ROLE_ARN = seedRoleArn;
+    if (externalId) {
+      env.SEED_EXTERNAL_ID = externalId;
     }
-    if (extraArgs && extraArgs.length > 0) {
-      logger.info(`Extra args: ${JSON.stringify(extraArgs)}`);
-    }
-    return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
 
-    const tsxProcess = spawn("tsx", args, {
-      env: runEnv,
+    const tsxProcess = spawn("tsx", [scriptPath], {
+      env,
       stdio: ["inherit", "pipe", "pipe"],
     });
 

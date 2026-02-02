@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Backroom Blackjack GetUploadUrl Lambda for Avatar Uploads"
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage (e.g., dev, prod)
+  AppName:
+    Type: String
+    Description: Application short name
+  AvatarBucketName:
+    Type: String
+    Description: S3 bucket name for avatar storage
+  AvatarBucketArn:
+    Type: String
+    Description: S3 bucket ARN for avatar storage
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket containing Lambda code
+  LambdaCodeKey:
+    Type: String
+    Description: S3 key for Lambda code zip file
+
+Resources:
+  GetUploadUrlFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-getuploadurl-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt GetUploadUrlFunctionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          AVATAR_BUCKET_NAME: !Ref AvatarBucketName
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Stack
+          Value: !Sub "${AppName}-${Stage}"
+
+  GetUploadUrlFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-getuploadurl-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3AvatarAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub "${AvatarBucketArn}/*"
+
+  # Grant AppSync permission to invoke the Lambda function
+  GetUploadUrlLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetUploadUrlFunction
+      Action: lambda:InvokeFunction
+      Principal: appsync.amazonaws.com
+      SourceArn: !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*"
+
+Outputs:
+  GetUploadUrlFunctionArn:
+    Description: ARN of the GetUploadUrl Lambda function
+    Value: !GetAtt GetUploadUrlFunction.Arn
+    Export:
+      Name: !Sub "${AppName}-GetUploadUrlFunctionArn-${Stage}"
+
+  GetUploadUrlFunctionName:
+    Description: Name of the GetUploadUrl Lambda function
+    Value: !Ref GetUploadUrlFunction

@@ -341,6 +341,63 @@ export const PERSONALITY_LOSS_REACTIONS: Record<
 };
 
 /**
+ * Reactions when AI player gets natural blackjack
+ */
+export const PERSONALITY_BLACKJACK_REACTIONS: Record<
+  AICharacter["personality"],
+  string[]
+> = {
+  drunk: [
+    "BLACKJACK! *slams table* BLACKJACK BABY!",
+    "Natural 21! *raises glass* That's how it's done!",
+    "BLACKJACK! I'm the KING!",
+    "*hiccup* BLACKJACK! Now THAT'S luck!",
+  ],
+  clumsy: [
+    "BLACKJACK! Oh my gosh! *almost knocks chips*",
+    "Did I get blackjack?! Really?! WOW!",
+    "Natural 21! *excitedly drops cards* Oops!",
+    "BLACKJACK! I can't believe it!",
+  ],
+  chatty: [
+    "BLACKJACK! Let me tell you, this reminds me of...",
+    "Natural 21! You know, the odds of that are...",
+    "BLACKJACK! Now THAT'S what I call a closer!",
+    "21! And THAT is how you make an impression!",
+  ],
+  superstitious: [
+    "BLACKJACK! The crystals KNEW!",
+    "Natural 21! I MANIFESTED this!",
+    "BLACKJACK! The universe provides!",
+    "21! My energy is ALIGNED tonight!",
+  ],
+  cocky: [
+    "BLACKJACK. Obviously.",
+    "Natural 21. Did anyone doubt me?",
+    "BLACKJACK! Too easy.",
+    "And THAT is how you play blackjack.",
+  ],
+  nervous: [
+    "BLACKJACK?! Wait, that's good right?! *sweating*",
+    "Natural 21! Oh my god! Is that allowed?!",
+    "BLACKJACK! I'm shaking! Why am I shaking?!",
+    "21! I didn't do anything wrong, right?!",
+  ],
+  lucky: [
+    "BLACKJACK! Called it! LUCKY LARRY STRIKES!",
+    "Natural 21! I KNEW my streak was real!",
+    "BLACKJACK! The luck is STRONG tonight!",
+    "21! This is why they call me Lucky!",
+  ],
+  unlucky: [
+    "BLACKJACK?! Wait... ME?! Really?!",
+    "Natural 21! Is this a trick?!",
+    "BLACKJACK! Did someone swap my cards?!",
+    "21! This CAN'T be happening to ME!",
+  ],
+};
+
+/**
  * End-of-hand reactions when dealer gets blackjack
  */
 export const PERSONALITY_DEALER_BLACKJACK_REACTIONS: Record<
@@ -413,6 +470,16 @@ export function getPersonalityReaction(
   situation: "bust" | "hit21" | "goodHit" | "badStart",
 ): string {
   return PERSONALITY_REACTIONS[personality][situation];
+}
+
+/**
+ * Helper function to get blackjack reaction for AI player
+ */
+export function getBlackjackReaction(
+  personality: AICharacter["personality"],
+): string {
+  const reactions = PERSONALITY_BLACKJACK_REACTIONS[personality];
+  return reactions[Math.floor(Math.random() * reactions.length)];
 }
 
 /**
@@ -2308,6 +2375,8 @@ export function getPlayerEngagement(characterId: string): string | null {
 export {
   DEALER_PLAYER_CONVERSATIONS,
   getDealerPlayerLine,
+  getDealerActionComment,
+  getDealerQuirkReaction,
   type DealerPlayerConversationTemplate,
 } from "./dealer";
 
@@ -2344,7 +2413,7 @@ export function getInitialHandReaction(
       "BLACKJACK! YES!",
       "Twenty-one baby!",
       "Blackjack! That's what I'm talking about!",
-      "Natural blackjack! Love it!",
+      "Blackjack! Love it!",
     ];
     return blackjackReactions[
       Math.floor(Math.random() * blackjackReactions.length)
@@ -2410,11 +2479,17 @@ export function getEndOfHandReaction(
       "BLACKJACK! YES!",
       "Twenty-one baby!",
       "Blackjack! That's what I'm talking about!",
-      "Natural blackjack! Love it!",
+      "Blackjack! Love it!",
     ];
     return blackjackReactions[
       Math.floor(Math.random() * blackjackReactions.length)
     ];
+  }
+
+  // Big win (dealer bust or other scenario) - use personality win reactions
+  if (outcome === "bigWin") {
+    const winReactions = PERSONALITY_WIN_REACTIONS[character.personality];
+    return winReactions[Math.floor(Math.random() * winReactions.length)];
   }
 
   if (outcome === "smallWin") {
@@ -2429,19 +2504,19 @@ export function getEndOfHandReaction(
     return pushReactions[Math.floor(Math.random() * pushReactions.length)];
   }
 
-  if (outcome === "smallLoss" && context === "dealerWin") {
-    // Dealer beat us reactions
-    const lossReactions = PERSONALITY_LOSS_REACTIONS[character.personality];
-    return lossReactions[Math.floor(Math.random() * lossReactions.length)];
-  }
-
+  // Dealer got blackjack - use specific reactions
   if (outcome === "bigLoss" && context === "dealerBlackjack") {
-    // Dealer got blackjack reactions
     const dealerBJReactions =
       PERSONALITY_DEALER_BLACKJACK_REACTIONS[character.personality];
     return dealerBJReactions[
       Math.floor(Math.random() * dealerBJReactions.length)
     ];
+  }
+
+  // Any loss (small or big) - use loss reactions
+  if (outcome === "smallLoss" || outcome === "bigLoss") {
+    const lossReactions = PERSONALITY_LOSS_REACTIONS[character.personality];
+    return lossReactions[Math.floor(Math.random() * lossReactions.length)];
   }
 
   // Don't show bust reactions at end of hand - they were already shown during the turn

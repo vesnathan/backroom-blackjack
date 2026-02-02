@@ -1,14 +1,50 @@
 import React from "react";
+import Image from "next/image";
 import { getDealerAvatarPath } from "@/data/dealerCharacters";
 import TurnIndicator from "@/components/TurnIndicator";
 import PlayingCard from "@/components/PlayingCard";
 import { useGameState } from "@/contexts/GameStateContext";
 import { useUIState } from "@/contexts/UIStateContext";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { getLayoutConfig } from "@/constants/cardLayout";
 
 export default function DealerSection() {
-  const { currentDealer, dealerCallout, phase, dealerHand, dealerRevealed } =
-    useGameState();
+  const {
+    currentDealer,
+    dealerCallout,
+    phase,
+    dealerHand,
+    dealerRevealed,
+    dealerSuspicion,
+  } = useGameState();
   const { setShowDealerInfo } = useUIState();
+
+  // Ring color based on dealer suspicion
+  const getRingColor = (level: number) => {
+    if (level < 30) return "#FFD700"; // Gold - normal
+    if (level < 60) return "#FFC107"; // Yellow - watching
+    return "#F44336"; // Red - suspicious
+  };
+
+  const ringColor = getRingColor(dealerSuspicion);
+  const pulseSpeed =
+    dealerSuspicion > 60 ? "1s" : dealerSuspicion > 30 ? "2s" : "3s";
+
+  const isMobile = useIsMobile();
+  const layout = getLayoutConfig(isMobile);
+
+  // Use layout config for all sizes
+  const {
+    avatarSize,
+    avatarRingSize,
+    avatarBorderWidth,
+    cardWidth,
+    cardHeight,
+    dealerCardSpacing,
+    dealerContainerWidth,
+    dealerContainerHeight,
+  } = layout;
+
   return (
     <div
       style={{
@@ -26,11 +62,31 @@ export default function DealerSection() {
         <div
           style={{
             position: "relative",
-            width: "150px",
-            height: "150px",
-            margin: "0 auto 12px",
+            width: `${avatarSize}px`,
+            height: `${avatarSize}px`,
+            margin: isMobile ? "0 auto 6px" : "0 auto 12px",
           }}
         >
+          {/* Suspicion ring - single ring that changes with suspicion */}
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: `${avatarRingSize}px`,
+              height: `${avatarRingSize}px`,
+              borderRadius: "50%",
+              border: `${avatarBorderWidth}px solid ${ringColor}`,
+              opacity: 0.3 + (dealerSuspicion / 100) * 0.5,
+              animation:
+                dealerSuspicion > 30
+                  ? `dealer-pulse ${pulseSpeed} ease-in-out infinite`
+                  : "none",
+              pointerEvents: "none",
+            }}
+          />
+
           {/* Turn Indicator - active during DEALER_TURN phase */}
           <TurnIndicator isActive={phase === "DEALER_TURN"} />
 
@@ -45,9 +101,9 @@ export default function DealerSection() {
                 backgroundColor: "rgba(0, 0, 0, 0.9)",
                 border: "2px solid #FFD700",
                 borderRadius: "8px",
-                padding: "10px 20px",
+                padding: isMobile ? "6px 12px" : "10px 20px",
                 color: "#FFD700",
-                fontSize: "18px",
+                fontSize: isMobile ? "12px" : "18px",
                 fontWeight: "bold",
                 textAlign: "center",
                 zIndex: 2000,
@@ -70,10 +126,10 @@ export default function DealerSection() {
               }
             }}
             style={{
-              width: "150px",
-              height: "150px",
+              width: `${avatarSize}px`,
+              height: `${avatarSize}px`,
               borderRadius: "50%",
-              border: "4px solid #FFD700",
+              border: `${avatarBorderWidth}px solid ${ringColor}`,
               overflow: "hidden",
               backgroundColor: "#333",
               cursor: "pointer",
@@ -92,21 +148,16 @@ export default function DealerSection() {
               e.currentTarget.style.boxShadow = "none";
             }}
           >
-            <img
+            <Image
               src={getDealerAvatarPath(currentDealer)}
               alt={currentDealer.name}
+              width={avatarSize}
+              height={avatarSize}
+              unoptimized
               style={{
                 width: "100%",
                 height: "100%",
                 objectFit: "cover",
-              }}
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const parent = e.currentTarget.parentElement;
-                if (parent) {
-                  parent.innerHTML =
-                    '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:60px;color:#FFD700">D</div>';
-                }
               }}
             />
           </div>
@@ -115,7 +166,7 @@ export default function DealerSection() {
       {/* Dealer Cards - Fixed height container */}
       <div
         style={{
-          minHeight: "110px",
+          minHeight: `${dealerContainerHeight}px`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -126,22 +177,21 @@ export default function DealerSection() {
           <div
             style={{
               position: "relative",
-              width: "370px",
-              height: "98px",
-              marginBottom: "4px",
-              // Debug: Add visible border to see container
-              // border: "2px solid red",
+              width: `${dealerContainerWidth}px`,
+              height: `${cardHeight}px`,
+              marginBottom: isMobile ? "2px" : "4px",
             }}
           >
             {dealerHand.cards.map((card, idx) => (
               <div
-                key={`${card.rank}${card.suit}`}
+                // eslint-disable-next-line react/no-array-index-key -- Cards can be duplicates
+                key={`${card.rank}${card.suit}-${idx}`}
                 style={{
                   position: "absolute",
-                  left: `${idx * 74}px`, // 70px card + 4px gap
+                  left: `${idx * dealerCardSpacing}px`,
                   top: 0,
-                  width: "70px",
-                  height: "98px",
+                  width: `${cardWidth}px`,
+                  height: `${cardHeight}px`,
                   zIndex: 10,
                 }}
               >
@@ -154,6 +204,17 @@ export default function DealerSection() {
           </div>
         )}
       </div>
+
+      <style>{`
+        @keyframes dealer-pulse {
+          0%, 100% {
+            transform: translate(-50%, -50%) scale(1);
+          }
+          50% {
+            transform: translate(-50%, -50%) scale(1.05);
+          }
+        }
+      `}</style>
     </div>
   );
 }

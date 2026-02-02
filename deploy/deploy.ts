@@ -2,8 +2,10 @@ import { config } from "dotenv";
 import * as path from "path";
 
 // Load environment variables from .env file
-config({ path: path.resolve(__dirname, "../.env") });
+const ROOT_DIR = path.resolve(import.meta.dirname, "..");
+config({ path: path.join(ROOT_DIR, ".env") });
 
+import { Command } from "commander";
 import {
   CloudFormationClient,
   Parameter,
@@ -13,6 +15,8 @@ import {
   DescribeStacksCommand,
   DescribeStackEventsCommand,
   DeleteStackCommand,
+  waitUntilStackCreateComplete,
+  waitUntilStackUpdateComplete,
 } from "@aws-sdk/client-cloudformation";
 import {
   S3,
@@ -20,13 +24,9 @@ import {
   DeleteObjectsCommand,
   PutObjectCommand,
   _Object,
-  PutPublicAccessBlockCommand,
-  PutBucketVersioningCommand,
 } from "@aws-sdk/client-s3";
 import {
   CloudFrontClient,
-  GetDistributionConfigCommand,
-  UpdateDistributionCommand,
   CreateInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import {
@@ -39,20 +39,21 @@ import {
   TEMPLATE_RESOURCES_PATHS,
 } from "./types";
 import { logger, setLogFile, closeLogFile } from "./utils/logger";
-import { IamManager } from "./utils/iam-manager";
 import { ResolverCompiler } from "./utils/resolver-compiler";
 import { LambdaCompiler } from "./utils/lambda-compiler";
-import { S3BucketManager } from "./utils/s3-bucket-manager";
 import { OutputsManager } from "./outputs-manager";
 import { candidateExportNames } from "./utils/export-names";
 import { seedDB } from "./utils/seed-db";
-import { addAppSyncBucketPolicy } from "./utils/s3-resolver-validator";
-import { cleanupLogGroups } from "./utils/loggroup-cleanup";
-import { createReadStream, readFileSync, readdirSync, statSync, existsSync } from "fs";
+import { createReadStream, readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "fs";
 import { rm } from "fs/promises";
 import { execSync } from "child_process";
-import { UserSetupManager } from "./utils/user-setup";
-import { OrphanCleanup } from "./utils/orphan-cleanup";
+// User creation is now handled by CloudFormation Custom Resource in cognito.yaml
+import {
+  checkBootstrapResources,
+  printBootstrapInstructions,
+  checkCredentials,
+  promptForCredentials,
+} from "./bootstrap-check";
 
 const findYamlFiles = (dir: string): string[] => {
   const files = readdirSync(dir);
@@ -261,184 +262,133 @@ async function forceDeleteStack(
   );
 }
 
-// Deploy DNS stack to us-east-1 (ACM certificates for CloudFront must be in us-east-1)
-async function deployDNSStack(
+// Certificate stack functions (copied from quiz-app pattern)
+interface CertificateOutputs {
+  MainCertificateArn?: string;
+}
+
+const CERTIFICATE_REGION = "us-east-1";
+const cfnClientUsEast1 = new CloudFormationClient({ region: CERTIFICATE_REGION });
+
+function getCertificateStackName(stage: string): string {
+  return `backroom-blackjack-certificate-${stage}`;
+}
+
+async function certificateStackExists(stage: string): Promise<{ exists: boolean; status?: string }> {
+  try {
+    const response = await cfnClientUsEast1.send(new DescribeStacksCommand({ StackName: getCertificateStackName(stage) }));
+    const status = response.Stacks?.[0]?.StackStatus;
+    return { exists: true, status };
+  } catch (error: unknown) {
+    // AWS SDK v3 puts message in different places
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes("does not exist")) {
+      return { exists: false };
+    }
+    throw error;
+  }
+}
+
+async function getCertificateStackOutputs(stage: string): Promise<CertificateOutputs> {
+  const response = await cfnClientUsEast1.send(new DescribeStacksCommand({ StackName: getCertificateStackName(stage) }));
+  const outputs: CertificateOutputs = {};
+
+  for (const output of response.Stacks?.[0]?.Outputs || []) {
+    if (output.OutputKey && output.OutputValue) {
+      outputs[output.OutputKey as keyof CertificateOutputs] = output.OutputValue;
+    }
+  }
+
+  return outputs;
+}
+
+async function deployCertificateStack(
+  stage: string,
   domainName: string,
   hostedZoneId: string,
-  stage: string,
-  cloudFrontDomainName?: string,
-): Promise<string> {
-  const region = "us-east-1"; // ACM certs for CloudFront MUST be in us-east-1
-  const cfn = new CloudFormationClient({ region });
-  const s3 = new S3({ region });
-  const stackName = `cardcountingtrainer-dns-${stage}`;
-  const templateBucketName = `cardcountingtrainer-dns-templates-${stage}`;
-
-  logger.info(`📋 Deploying DNS stack to us-east-1 for domain: ${domainName}`);
-
-  // Create S3 bucket for DNS template in us-east-1
-  const s3BucketManager = new S3BucketManager(region);
-  const bucketExists =
-    await s3BucketManager.ensureBucketExists(templateBucketName);
-  if (!bucketExists) {
-    throw new Error(
-      `Failed to create DNS template bucket ${templateBucketName} in us-east-1`,
-    );
+  templateBucketName: string,
+  mainRegion: string,
+): Promise<CertificateOutputs> {
+  if (!domainName || !hostedZoneId) {
+    logger.info("  Skipping certificate stack (no domain configured)");
+    return {};
   }
 
-  // Upload DNS template to S3
-  const dnsTemplatePath = path.join(__dirname, "resources/DNS/dns.yaml");
-  const dnsTemplateKey = "dns.yaml";
+  const stackName = getCertificateStackName(stage);
+  const cfnRoleArn = process.env.CFN_ROLE_ARN || `arn:aws:iam::${process.env.AWS_ACCOUNT_ID || "430118819356"}:role/backroom-blackjack-cfn-role`;
 
-  try {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: templateBucketName,
-        Key: dnsTemplateKey,
-        Body: createReadStream(dnsTemplatePath),
-        ContentType: "application/x-yaml",
-      }),
-    );
-    logger.debug("DNS template uploaded to us-east-1");
-  } catch (error: any) {
-    throw new Error(`Failed to upload DNS template: ${error.message}`);
-  }
+  logger.info("\nDeploying certificate stack to us-east-1...");
 
-  // Prepare CloudFormation parameters
-  const stackParams: Parameter[] = [
+  // Upload certificate template to S3
+  const certTemplate = readFileSync(path.join(import.meta.dirname, "resources/Certificate/certificate.yaml"), "utf-8");
+  const s3 = new S3({ region: mainRegion });
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: templateBucketName,
+      Key: "resources/Certificate/certificate.yaml",
+      Body: certTemplate,
+      ContentType: "application/x-yaml",
+    }),
+  );
+  logger.info("  Uploaded: resources/Certificate/certificate.yaml");
+
+  const templateUrl = `https://${templateBucketName}.s3.${mainRegion}.amazonaws.com/resources/Certificate/certificate.yaml`;
+
+  const parameters = [
     { ParameterKey: "Stage", ParameterValue: stage },
+    { ParameterKey: "AppName", ParameterValue: "backroom-blackjack" },
     { ParameterKey: "DomainName", ParameterValue: domainName },
     { ParameterKey: "HostedZoneId", ParameterValue: hostedZoneId },
-    {
-      ParameterKey: "CloudFrontDomainName",
-      ParameterValue: cloudFrontDomainName || "",
-    },
   ];
 
-  const templateUrl = `https://s3.${region}.amazonaws.com/${templateBucketName}/${dnsTemplateKey}`;
+  const { exists, status } = await certificateStackExists(stage);
 
-  // Check if stack exists
-  let stackExists = false;
+  // If stack already exists and is complete, just return outputs
+  if (exists && status === "CREATE_COMPLETE") {
+    logger.info(`  Certificate stack already exists (${status})`);
+    return getCertificateStackOutputs(stage);
+  }
+
   try {
-    const describeResponse = await cfn.send(
-      new DescribeStacksCommand({ StackName: stackName }),
-    );
-    stackExists = !!(
-      describeResponse.Stacks && describeResponse.Stacks.length > 0
-    );
-  } catch (error: any) {
-    if (
-      error.name === "ValidationError" ||
-      error.message?.includes("does not exist")
-    ) {
-      stackExists = false;
+    if (exists) {
+      logger.info(`  Updating certificate stack: ${stackName} (current status: ${status})`);
+      await cfnClientUsEast1.send(new UpdateStackCommand({
+        StackName: stackName,
+        TemplateURL: templateUrl,
+        Parameters: parameters,
+        RoleARN: cfnRoleArn,
+      }));
+      await waitUntilStackUpdateComplete(
+        { client: cfnClientUsEast1, maxWaitTime: 600 },
+        { StackName: stackName }
+      );
+    } else {
+      logger.info(`  Creating certificate stack: ${stackName}`);
+      logger.info("  Note: DNS validation may take a few minutes...");
+      await cfnClientUsEast1.send(new CreateStackCommand({
+        StackName: stackName,
+        TemplateURL: templateUrl,
+        Parameters: parameters,
+        RoleARN: cfnRoleArn,
+        DisableRollback: true,
+      }));
+      await waitUntilStackCreateComplete(
+        { client: cfnClientUsEast1, maxWaitTime: 600 },
+        { StackName: stackName }
+      );
+    }
+    logger.success("  Certificate stack deployment complete!");
+  } catch (error: unknown) {
+    // Handle "No updates" error from AWS
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes("No updates")) {
+      logger.info("  No certificate updates needed");
     } else {
       throw error;
     }
   }
 
-  // Create or update stack
-  if (stackExists) {
-    logger.info(`Updating DNS stack in us-east-1...`);
-    try {
-      await cfn.send(
-        new UpdateStackCommand({
-          StackName: stackName,
-          TemplateURL: templateUrl,
-          Parameters: stackParams,
-          Capabilities: [Capability.CAPABILITY_NAMED_IAM],
-        }),
-      );
-      await waitForStackCompletion(cfn, stackName, "UPDATE");
-    } catch (error: any) {
-      if (error.message?.includes("No updates are to be performed")) {
-        logger.info("DNS stack is already up to date");
-      } else {
-        throw error;
-      }
-    }
-  } else {
-    logger.info(`Creating DNS stack in us-east-1...`);
-    logger.info(
-      `⏳ This may take 5-10 minutes for ACM certificate validation...`,
-    );
-    await cfn.send(
-      new CreateStackCommand({
-        StackName: stackName,
-        TemplateURL: templateUrl,
-        Parameters: stackParams,
-        Capabilities: [Capability.CAPABILITY_NAMED_IAM],
-      }),
-    );
-    await waitForStackCompletion(cfn, stackName, "CREATE");
-  }
-
-  // Get certificate ARN from stack outputs
-  const stackData = await cfn.send(
-    new DescribeStacksCommand({ StackName: stackName }),
-  );
-  const certificateArn = stackData.Stacks?.[0]?.Outputs?.find(
-    (output) => output.OutputKey === "CertificateArn",
-  )?.OutputValue;
-
-  if (!certificateArn) {
-    throw new Error("Failed to get Certificate ARN from DNS stack outputs");
-  }
-
-  logger.success(`✓ DNS stack deployed successfully in us-east-1`);
-  logger.info(`📜 Certificate ARN: ${certificateArn}`);
-
-  return certificateArn;
-}
-
-// Update CloudFront distribution with custom domain and certificate
-async function updateCloudFrontWithDomain(
-  distributionId: string,
-  certificateArn: string,
-  domainName: string,
-): Promise<void> {
-  const cloudfront = new CloudFrontClient({ region: "us-east-1" }); // CloudFront is global but API is in us-east-1
-
-  logger.info(`☁️  Updating CloudFront distribution ${distributionId}...`);
-
-  // Get current distribution configuration
-  const getConfigResponse = await cloudfront.send(
-    new GetDistributionConfigCommand({ Id: distributionId }),
-  );
-
-  const config = getConfigResponse.DistributionConfig;
-  const etag = getConfigResponse.ETag;
-
-  if (!config || !etag) {
-    throw new Error("Failed to get CloudFront distribution configuration");
-  }
-
-  // Update configuration with custom domain and certificate
-  config.Aliases = {
-    Quantity: 2,
-    Items: [domainName, `www.${domainName}`],
-  };
-
-  config.ViewerCertificate = {
-    ACMCertificateArn: certificateArn,
-    SSLSupportMethod: "sni-only",
-    MinimumProtocolVersion: "TLSv1.2_2021",
-    Certificate: certificateArn,
-    CertificateSource: "acm",
-  };
-
-  // Update the distribution
-  await cloudfront.send(
-    new UpdateDistributionCommand({
-      Id: distributionId,
-      DistributionConfig: config,
-      IfMatch: etag,
-    }),
-  );
-
-  logger.success(
-    `✓ CloudFront distribution updated with custom domain: ${domainName}`,
-  );
+  return getCertificateStackOutputs(stage);
 }
 
 // Recursively find all .ts files
@@ -665,115 +615,21 @@ async function waitForStackCompletion(
   );
 }
 
-// Helper function to empty an S3 bucket
-async function emptyBucket(s3: S3, bucketName: string): Promise<void> {
-  try {
-    let continuationToken: string | undefined;
-    let deletedCount = 0;
-
-    do {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: bucketName,
-        ContinuationToken: continuationToken,
-      });
-      const listResponse = await s3.send(listCommand);
-
-      if (listResponse.Contents && listResponse.Contents.length > 0) {
-        const deleteCommand = new DeleteObjectsCommand({
-          Bucket: bucketName,
-          Delete: {
-            Objects: listResponse.Contents.map((obj: _Object) => ({
-              Key: obj.Key!,
-            })),
-          },
-        });
-        await s3.send(deleteCommand);
-        deletedCount += listResponse.Contents.length;
-      }
-
-      continuationToken = listResponse.NextContinuationToken;
-    } while (continuationToken);
-
-    if (deletedCount > 0) {
-      logger.debug(`    Deleted ${deletedCount} objects from ${bucketName}`);
-    }
-  } catch (error: any) {
-    if (error.name === "NoSuchBucket") {
-      logger.debug(`    Bucket ${bucketName} does not exist`);
-    } else {
-      throw error;
-    }
-  }
-}
-
-// Helper function to wait for stack deletion
-async function waitForStackDeletion(
-  cfn: CloudFormationClient,
-  stackName: string,
-): Promise<void> {
-  const maxAttempts = 120; // 20 minutes
-  const delay = 10000; // 10 seconds
-
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const describeResponse = await cfn.send(
-        new DescribeStacksCommand({ StackName: stackName }),
-      );
-
-      const status = describeResponse.Stacks?.[0]?.StackStatus;
-
-      if (status === "DELETE_COMPLETE") {
-        logger.success(`Stack ${stackName} deleted successfully`);
-        return;
-      }
-
-      if (status === "DELETE_FAILED") {
-        throw new Error(`Stack deletion failed with status: ${status}`);
-      }
-
-      // Still deleting, wait and try again
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    } catch (error: any) {
-      // Stack not found means it was deleted
-      if (
-        error.name === "ValidationError" ||
-        error.message?.includes("does not exist")
-      ) {
-        logger.success(`Stack ${stackName} deleted successfully`);
-        return;
-      }
-
-      if (i === maxAttempts - 1) {
-        throw error;
-      }
-
-      logger.warning(
-        `Error checking stack status (attempt ${i + 1}/${maxAttempts}): ${error.message}`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-
-  throw new Error(
-    `Timeout waiting for stack ${stackName} deletion after ${(maxAttempts * delay) / 1000} seconds`,
-  );
-}
-
-export async function deployCardCountingTrainer(
+export async function deployBackroomBlackjack(
   options: DeploymentOptions,
 ): Promise<void> {
   // Set up timestamped log file
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const logDir = path.join(__dirname, "..", ".cache", "deploy", "logs");
+  const logDir = path.join(import.meta.dirname, "..", ".cache", "deploy", "logs");
   const logFile = path.join(
     logDir,
     `deploy-cct-${options.stage}-${timestamp}.log`,
   );
 
   // Create log directory if it doesn't exist
-  const fs = require("fs");
-  if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
+  if (!existsSync(logDir)) {
+    const { mkdirSync } = await import("fs");
+    mkdirSync(logDir, { recursive: true });
   }
 
   // Set up logging
@@ -781,71 +637,46 @@ export async function deployCardCountingTrainer(
   logger.info(`Deployment log: ${logFile}`);
 
   try {
-    await deployCardCountingTrainerInternal(options);
+    await deployBackroomBlackjackInternal(options);
   } finally {
     closeLogFile();
   }
 }
 
-async function deployCardCountingTrainerInternal(
+async function deployBackroomBlackjackInternal(
   options: DeploymentOptions,
 ): Promise<void> {
-  const stackName = getStackName(StackType.CardCountingTrainer, options.stage);
+  const stackName = getStackName(StackType.Backroom_Blackjack, options.stage);
   const templateBucketName = getTemplateBucketName(options.stage);
 
   const stopSpinner = logger.infoWithSpinner(
-    "Starting Card Counting Trainer stack deployment in ap-southeast-2",
+    "Starting Backroom Blackjack stack deployment in ap-southeast-2",
   );
 
   const region = options.region || process.env.AWS_REGION || "ap-southeast-2";
 
-  // Deploy DNS stack first if domain configuration is provided (prod only)
-  let certificateArn: string | undefined;
-  if (options.domainName && options.hostedZoneId && options.stage === "prod") {
-    try {
-      logger.info(`🌐 Domain configuration detected for ${options.domainName}`);
-      logger.info(
-        `📋 Deploying DNS stack to us-east-1 (ACM certificates for CloudFront must be in us-east-1)`,
-      );
+  // Deploy certificate stack first (only for prod with custom domain)
+  let certificateOutputs: CertificateOutputs = {};
+  if (options.stage === "prod" && options.domainName && options.hostedZoneId) {
+    logger.info(`🌐 Custom domain configuration detected:`);
+    logger.info(`   Domain: ${options.domainName}`);
+    logger.info(`   Hosted Zone: ${options.hostedZoneId}`);
 
-      // First deployment: Create certificate without CloudFront domain
-      certificateArn = await deployDNSStack(
-        options.domainName,
-        options.hostedZoneId,
-        options.stage,
-        undefined, // CloudFront domain not available yet
-      );
+    certificateOutputs = await deployCertificateStack(
+      options.stage,
+      options.domainName,
+      options.hostedZoneId,
+      templateBucketName,
+      region,
+    );
 
-      logger.success(
-        `✓ DNS stack deployed with certificate: ${certificateArn.substring(0, 50)}...`,
-      );
-    } catch (error: any) {
-      logger.error(`Failed to deploy DNS stack: ${error.message}`);
-      logger.error(
-        `Deployment cannot continue without DNS configuration. Please fix the issue and try again.`,
-      );
-      throw error;
+    if (certificateOutputs.MainCertificateArn) {
+      logger.info(`   Certificate: ${certificateOutputs.MainCertificateArn.substring(0, 60)}...`);
     }
   }
 
   // Initialize clients early to check if stack exists
   const cfn = new CloudFormationClient({ region });
-
-  // Always clean up orphaned resources before deployment
-  logger.info("🧹 Cleaning up orphaned resources before deployment...");
-  const orphanCleanup = new OrphanCleanup({
-    region,
-    appName: "cardcountingtrainer",
-    stage: options.stage,
-    dryRun: false,
-  });
-  try {
-    await orphanCleanup.cleanupAll();
-  } catch (cleanupError: any) {
-    logger.warning(
-      `Orphan cleanup had some failures, continuing with deployment: ${cleanupError.message}`,
-    );
-  }
 
   // Check if stack already exists
   let stackExists = false;
@@ -870,22 +701,23 @@ async function deployCardCountingTrainerInternal(
       logger.debug(`Stack is healthy for frontend build: ${stackIsHealthy}`);
     }
   } catch (error: any) {
+    // ValidationError means stack doesn't exist - this is expected for new deployments
+    const errorMessage = error.message || String(error);
     if (
       error.name === "ValidationError" ||
-      error.message?.includes("does not exist")
+      errorMessage.includes("does not exist") ||
+      errorMessage.includes("ValidationError")
     ) {
-      logger.debug(
-        `Stack ${stackName} does not exist - will perform initial deployment`,
-      );
+      logger.info(`Stack ${stackName} does not exist - will create new stack`);
     } else {
-      logger.warning(`Error checking stack existence: ${error.message}`);
+      logger.warning(`Error checking stack existence: ${errorMessage}`);
     }
   }
 
   // Build GraphQL schema
   try {
     logger.info("📦 Building GraphQL schema...");
-    const frontendPath = path.join(__dirname, "../frontend");
+    const frontendPath = path.join(import.meta.dirname, "../frontend");
 
     logger.debug(`Running: yarn build-gql in ${frontendPath}`);
     execSync("yarn build-gql", {
@@ -907,93 +739,13 @@ async function deployCardCountingTrainerInternal(
   const s3 = new S3({ region });
   let resolversBuildHash: string | undefined = undefined;
 
-  // Set up IAM role
-  const iamManager = new IamManager(region);
-  const roleArn = await iamManager.setupRole(
-    StackType.CardCountingTrainer,
-    options.stage,
-    templateBucketName,
-  );
-  if (!roleArn) {
-    throw new Error("Failed to setup role for Card Counting Trainer");
-  }
-
-  // Wait for IAM role to propagate
-  logger.debug("Waiting 10 seconds for IAM role to propagate...");
-  await sleep(10000);
+  // Use pre-existing CFN role from bootstrap (minimal permissions pattern)
+  const roleArn = process.env.CFN_ROLE_ARN || `arn:aws:iam::${process.env.AWS_ACCOUNT_ID || "430118819356"}:role/backroom-blackjack-cfn-role`;
+  logger.info(`Using CFN role: ${roleArn}`);
 
   try {
-    // Create S3 bucket for templates if it doesn't exist
-    const s3BucketManager = new S3BucketManager(region);
-
-    // Make multiple attempts to ensure the bucket exists
-    let bucketExists = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      if (options.debugMode) {
-        logger.debug(
-          `Attempt ${attempt}/3 to ensure bucket ${templateBucketName} exists...`,
-        );
-      }
-      bucketExists =
-        await s3BucketManager.ensureBucketExists(templateBucketName);
-
-      if (bucketExists) {
-        logger.debug(
-          `Bucket ${templateBucketName} exists and is accessible (attempt ${attempt})`,
-        );
-        break;
-      }
-
-      logger.warning(
-        `Bucket operation failed on attempt ${attempt}, retrying...`,
-      );
-      await sleep(3000 * attempt); // Exponential backoff
-    }
-
-    if (!bucketExists) {
-      throw new Error(
-        `Failed to ensure template bucket ${templateBucketName} exists after multiple attempts`,
-      );
-    }
-
-    // Configure bucket for public access block and versioning
-    try {
-      const putBucketPublicAccessBlockCommand = new PutPublicAccessBlockCommand(
-        {
-          Bucket: templateBucketName,
-          PublicAccessBlockConfiguration: {
-            BlockPublicAcls: true,
-            IgnorePublicAcls: true,
-            BlockPublicPolicy: true,
-            RestrictPublicBuckets: true,
-          },
-        },
-      );
-
-      await s3.send(putBucketPublicAccessBlockCommand);
-      if (options.debugMode) {
-        logger.debug(`Set public access block on bucket ${templateBucketName}`);
-      }
-
-      const putBucketVersioningCommand = new PutBucketVersioningCommand({
-        Bucket: templateBucketName,
-        VersioningConfiguration: {
-          Status: "Enabled",
-        },
-      });
-
-      await s3.send(putBucketVersioningCommand);
-      if (options.debugMode) {
-        logger.debug(`Enabled versioning on bucket ${templateBucketName}`);
-      }
-    } catch (configError: any) {
-      logger.warning(`Error configuring bucket: ${configError.message}`);
-      // Continue despite configuration errors
-    }
-
-    if (options.debugMode) {
-      logger.debug(`Template bucket ${templateBucketName} is ready for use`);
-    }
+    // Upload templates to S3 (bucket already exists from bootstrap)
+    logger.info("\nUploading CloudFormation templates...");
 
     // Upload main CloudFormation template
     const mainTemplateS3Key = "cfn-template.yaml";
@@ -1009,7 +761,7 @@ async function deployCardCountingTrainerInternal(
         new PutObjectCommand({
           Bucket: templateBucketName,
           Key: mainTemplateS3Key,
-          Body: readFileSync(TEMPLATE_PATHS[StackType.CardCountingTrainer]),
+          Body: readFileSync(TEMPLATE_PATHS[StackType.Backroom_Blackjack]),
           ContentType: "application/x-yaml",
         }),
       );
@@ -1060,11 +812,11 @@ async function deployCardCountingTrainerInternal(
     // Upload nested stack templates
     if (options.debugMode) {
       logger.debug(
-        `Looking for templates in: ${TEMPLATE_RESOURCES_PATHS[StackType.CardCountingTrainer]}`,
+        `Looking for templates in: ${TEMPLATE_RESOURCES_PATHS[StackType.Backroom_Blackjack]}`,
       );
     }
     const templateFiles = findYamlFiles(
-      TEMPLATE_RESOURCES_PATHS[StackType.CardCountingTrainer],
+      TEMPLATE_RESOURCES_PATHS[StackType.Backroom_Blackjack],
     );
     if (options.debugMode) {
       logger.debug(`Found ${templateFiles.length} template files`);
@@ -1072,7 +824,7 @@ async function deployCardCountingTrainerInternal(
 
     if (templateFiles.length === 0) {
       throw new Error(
-        `No template files found in ${TEMPLATE_RESOURCES_PATHS[StackType.CardCountingTrainer]}`,
+        `No template files found in ${TEMPLATE_RESOURCES_PATHS[StackType.Backroom_Blackjack]}`,
       );
     }
 
@@ -1082,7 +834,7 @@ async function deployCardCountingTrainerInternal(
 
     for (const file of templateFiles) {
       const relativePath = path.relative(
-        TEMPLATE_RESOURCES_PATHS[StackType.CardCountingTrainer],
+        TEMPLATE_RESOURCES_PATHS[StackType.Backroom_Blackjack],
         file,
       );
       // Prepend 'resources/' to match CloudFormation template expectations
@@ -1127,32 +879,19 @@ async function deployCardCountingTrainerInternal(
       }
     }
 
-    logger.debug(
+    logger.info(
       `Successfully uploaded ${successfulUploads.length} template files`,
     );
 
-    // Add AppSync bucket policy to allow AppSync to read resolver code from S3
-    logger.info("Adding AppSync bucket policy...");
-    try {
-      await addAppSyncBucketPolicy(templateBucketName, region);
-      logger.success("AppSync bucket policy configured successfully");
-    } catch (error: any) {
-      logger.error(`Failed to add AppSync bucket policy: ${error.message}`);
-      throw new Error(
-        `AppSync bucket policy configuration failed - deployment cannot continue`,
-      );
-    }
-
     // Upload GraphQL schema with content hash
     logger.debug("Uploading GraphQL schema file...");
-    const schemaPath = path.join(__dirname, "../backend/combined_schema.graphql");
+    const schemaPath = path.join(import.meta.dirname, "../backend/combined_schema.graphql");
 
     let schemaHash = "";
     if (existsSync(schemaPath)) {
       // Calculate hash of schema content for versioning
-      const crypto = require("crypto");
-      const fs = require("fs");
-      const schemaContent = fs.readFileSync(schemaPath, "utf8");
+      const crypto = await import("crypto");
+      const schemaContent = readFileSync(schemaPath, "utf8");
       schemaHash = crypto
         .createHash("sha256")
         .update(schemaContent)
@@ -1191,10 +930,10 @@ async function deployCardCountingTrainerInternal(
       logger.debug("Compiling Lambda functions...");
     }
 
-    const lambdaSourceDir = path.join(__dirname, "../backend/lambda");
+    const lambdaSourceDir = path.join(import.meta.dirname, "../backend/lambda");
     // Use a project-local cache for generated Lambda artifacts to avoid committing them
     const lambdaOutputDir = path.join(
-      __dirname,
+      import.meta.dirname,
       "..",
       ".cache",
       "deploy",
@@ -1289,16 +1028,7 @@ async function deployCardCountingTrainerInternal(
         `Using existing resolver build hash: ${resolversBuildHash}`,
       );
     } else {
-      // Double-check that the bucket exists before compiling and uploading resolvers
-      const bucketExistsBeforeResolvers =
-        await s3BucketManager.ensureBucketExists(templateBucketName);
-      if (!bucketExistsBeforeResolvers) {
-        throw new Error(
-          `Template bucket ${templateBucketName} must exist before uploading resolvers`,
-        );
-      }
-
-      const backendPath = path.join(__dirname, "../backend");
+      const backendPath = path.join(import.meta.dirname, "../backend");
       const resolverDir = path.join(backendPath, "resolvers");
 
       if (!existsSync(resolverDir)) {
@@ -1357,9 +1087,9 @@ async function deployCardCountingTrainerInternal(
             resolverFiles: resolverFiles,
             sharedFileName: "gqlTypes.ts",
             constantsDir: constantsDir,
-            appName: "cardcountingtrainer",
+            appName: "backroom-blackjack",
             backendPackageJsonPath: path.join(backendPath, "package.json"),
-            gqlTypesPath: path.join(__dirname, "..", "frontend", "src", "types", "gqlTypes.ts"),
+            gqlTypesPath: path.join(import.meta.dirname, "..", "frontend", "src", "types", "gqlTypes.ts"),
           });
 
           resolversBuildHash = await resolverCompiler.compileAndUploadResolvers();
@@ -1378,6 +1108,38 @@ async function deployCardCountingTrainerInternal(
       {
         ParameterKey: "LambdaCodeKey",
         ParameterValue: `functions/${options.stage}/postConfirmation.zip`,
+      },
+      {
+        ParameterKey: "GetUploadUrlLambdaCodeKey",
+        ParameterValue: `functions/${options.stage}/getUploadUrl.zip`,
+      },
+      {
+        ParameterKey: "SendInviteLambdaCodeKey",
+        ParameterValue: `functions/${options.stage}/sendInvite.zip`,
+      },
+      {
+        ParameterKey: "StripeWebhookCodeKey",
+        ParameterValue: `functions/${options.stage}/stripeWebhook.zip`,
+      },
+      {
+        ParameterKey: "CreateCheckoutCodeKey",
+        ParameterValue: `functions/${options.stage}/createCheckout.zip`,
+      },
+      {
+        ParameterKey: "MonthlyStipendCodeKey",
+        ParameterValue: `functions/${options.stage}/monthlyStipend.zip`,
+      },
+      {
+        ParameterKey: "EarlyAdopterCheckCodeKey",
+        ParameterValue: `functions/${options.stage}/earlyAdopterCheck.zip`,
+      },
+      {
+        ParameterKey: "CreateChipCheckoutCodeKey",
+        ParameterValue: `functions/${options.stage}/createChipCheckout.zip`,
+      },
+      {
+        ParameterKey: "PreSignUpLambdaCodeKey",
+        ParameterValue: `functions/${options.stage}/cognitoPreSignUp.zip`,
       },
     ];
 
@@ -1401,6 +1163,32 @@ async function deployCardCountingTrainerInternal(
     stackParams.push({
       ParameterKey: "SchemaHash",
       ParameterValue: schemaHash,
+    });
+
+    // Add domain configuration parameters (prod only)
+    const domainName = options.stage === "prod" ? (options.domainName || "") : "";
+    const hostedZoneId = options.stage === "prod" ? (options.hostedZoneId || "") : "";
+    const certificateArn = options.stage === "prod"
+      ? (certificateOutputs.MainCertificateArn || options.certificateArn || "")
+      : "";
+
+    stackParams.push(
+      { ParameterKey: "DomainName", ParameterValue: domainName },
+      { ParameterKey: "HostedZoneId", ParameterValue: hostedZoneId },
+      { ParameterKey: "CertificateArn", ParameterValue: certificateArn },
+    );
+
+    // Add user creation parameters
+    stackParams.push(
+      { ParameterKey: "AdminEmail", ParameterValue: options.adminEmail || "vesnathan+bb-admin@gmail.com" },
+      { ParameterKey: "TestUserEmail", ParameterValue: options.testUserEmail || "vesnathan+bb-user@gmail.com" },
+    );
+
+    // DeployUserArn for the seed role (allows deploy user to assume role for seeding)
+    const deployUserArn = process.env.DEPLOY_USER_ARN || `arn:aws:iam::${process.env.AWS_ACCOUNT_ID || "430118819356"}:user/backroom-blackjack-deploy`;
+    stackParams.push({
+      ParameterKey: "DeployUserArn",
+      ParameterValue: deployUserArn,
     });
 
     if (options.debugMode) {
@@ -1428,13 +1216,6 @@ async function deployCardCountingTrainerInternal(
         )}`,
       );
     }
-
-    // Clean up any orphaned LogGroups before deployment
-    await cleanupLogGroups({
-      appName: "cardcountingtrainer",
-      stage: options.stage,
-      region: region,
-    });
 
     stopSpinner();
 
@@ -1518,7 +1299,7 @@ async function deployCardCountingTrainerInternal(
       logger.info("💾 Saving deployment outputs...");
       const outputsManager = new OutputsManager();
       await outputsManager.saveStackOutputs(
-        StackType.CardCountingTrainer,
+        StackType.Backroom_Blackjack,
         options.stage,
         region,
       );
@@ -1528,80 +1309,71 @@ async function deployCardCountingTrainerInternal(
       // don't throw - this is non-critical
     }
 
-    // Update CloudFront and DNS for custom domain (second phase)
-    if (
-      certificateArn &&
-      options.domainName &&
-      options.hostedZoneId &&
-      options.stage === "prod"
-    ) {
-      try {
-        logger.info(`🌐 Configuring custom domain for CloudFront...`);
+    // Create frontend .env.local file with stack outputs
+    try {
+      logger.info("📝 Creating frontend .env.local...");
+      const stackOutputs = await cfn.send(
+        new DescribeStacksCommand({ StackName: stackName }),
+      );
+      const outputs = stackOutputs.Stacks?.[0]?.Outputs || [];
 
-        // Get CloudFront distribution ID and domain from stack outputs
-        const stackOutputs = await cfn.send(
-          new DescribeStacksCommand({ StackName: stackName }),
-        );
-        const cloudFrontDomain = stackOutputs.Stacks?.[0]?.Outputs?.find(
-          (output) => output.OutputKey === "CloudFrontDomainName",
-        )?.OutputValue;
-        const cloudFrontDistributionId =
-          stackOutputs.Stacks?.[0]?.Outputs?.find(
-            (output) => output.OutputKey === "CloudFrontDistributionId",
-          )?.OutputValue;
+      const userPoolId = outputs.find(o => o.OutputKey === "UserPoolId")?.OutputValue || "";
+      const userPoolClientId = outputs.find(o => o.OutputKey === "UserPoolClientId")?.OutputValue || "";
+      const identityPoolId = outputs.find(o => o.OutputKey === "IdentityPoolId")?.OutputValue || "";
+      const graphqlUrl = outputs.find(o => o.OutputKey === "ApiUrl")?.OutputValue || "";
 
-        if (cloudFrontDomain && cloudFrontDistributionId) {
-          logger.info(`📡 CloudFront domain: ${cloudFrontDomain}`);
-          logger.info(`🆔 Distribution ID: ${cloudFrontDistributionId}`);
+      // Build app URL based on domain or CloudFront
+      const appUrl = options.domainName
+        ? `https://${options.domainName}`
+        : `https://${outputs.find(o => o.OutputKey === "CloudFrontDomainName")?.OutputValue || ""}`;
 
-          // Update CloudFront distribution with certificate and custom domains
-          await updateCloudFrontWithDomain(
-            cloudFrontDistributionId,
-            certificateArn,
-            options.domainName,
-          );
+      // Production-specific client-side keys (safe to expose)
+      const stripePublishableKey = options.stage === "prod"
+        ? "pk_live_51SkffUDPwxruY7KoIGVtRsd7t1w9Opa5WWx6tdFP2aV9DY7w4Cv4aRYw2LuoHTyBe4Vuxfd5sHiap4CimbOM0lMO00VDFugu37"
+        : "";
+      const recaptchaSiteKey = options.stage === "prod"
+        ? "6LcEt1UsAAAAAKCAhykMNujLOE4JJFp9-H8FUmsE"
+        : "";
 
-          // Update DNS stack with CloudFront domain to create Route53 records
-          await deployDNSStack(
-            options.domainName,
-            options.hostedZoneId,
-            options.stage,
-            cloudFrontDomain,
-          );
+      const envContent = `# Auto-generated by deploy script - do not edit manually
+NEXT_PUBLIC_USER_POOL_ID=${userPoolId}
+NEXT_PUBLIC_USER_POOL_CLIENT_ID=${userPoolClientId}
+NEXT_PUBLIC_IDENTITY_POOL_ID=${identityPoolId}
+NEXT_PUBLIC_GRAPHQL_URL=${graphqlUrl}
+NEXT_PUBLIC_ENVIRONMENT=${options.stage}
 
-          logger.success(`✓ Custom domain configuration complete!`);
-          logger.info(`🌍 Your site will be accessible at:`);
-          logger.info(`   - https://${options.domainName}`);
-          logger.info(`   - https://www.${options.domainName}`);
-          logger.info(
-            `   - https://${cloudFrontDomain} (CloudFront default domain)`,
-          );
-          logger.info(
-            `⏳ Note: CloudFront distribution update may take 15-20 minutes to propagate globally`,
-          );
-        } else {
-          logger.warning(
-            `Could not find CloudFront outputs. Domain configuration incomplete.`,
-          );
-        }
-      } catch (error: any) {
-        logger.error(`Failed to configure custom domain: ${error.message}`);
-        logger.error(
-          `Deployment failed during domain configuration. Please fix the issue and redeploy.`,
-        );
-        throw error;
-      }
+# Stripe
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${stripePublishableKey}
+
+# reCAPTCHA
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${recaptchaSiteKey}
+
+# App URL
+NEXT_PUBLIC_APP_URL=${appUrl}
+`;
+
+      const frontendEnvPath = path.join(import.meta.dirname, "../frontend/.env.local");
+      writeFileSync(frontendEnvPath, envContent);
+      logger.success("✓ Frontend .env.local created");
+    } catch (error: any) {
+      logger.error(`Failed to create frontend .env.local: ${error.message}`);
+      // don't throw - this is non-critical
     }
 
-    // Build frontend if it wasn't built yet and stack is now healthy
-    const frontendOutPath = path.join(__dirname, "../frontend/out");
-    const frontendPath = path.join(__dirname, "../frontend");
+    // Log custom domain info if configured
+    if (options.domainName && options.stage === "prod" && certificateArn) {
+      logger.success(`🌐 Custom domain configured!`);
+      logger.info(`   Your site will be accessible at:`);
+      logger.info(`   - https://${options.domainName}`);
+      logger.info(`   - https://www.${options.domainName}`);
+    }
 
-    // Check if frontend needs to be built (out directory doesn't exist)
-    if (
-      !require("fs").existsSync(frontendOutPath) &&
-      !options.skipFrontendBuild
-    ) {
+    // Build frontend unless explicitly skipped
+    const frontendOutPath = path.join(import.meta.dirname, "../frontend/out");
+    const frontendPath = path.join(import.meta.dirname, "../frontend");
+
+    // Always build frontend on deploy (ensures latest code with correct env vars)
+    if (!options.skipFrontendBuild) {
       try {
         // Verify stack is now healthy (has required outputs)
         const postDeployStackData = await cfn.send(
@@ -1647,7 +1419,7 @@ async function deployCardCountingTrainerInternal(
     // Upload frontend to S3 if it was built
     try {
       // Check if the out directory exists
-      if (require("fs").existsSync(frontendOutPath)) {
+      if (existsSync(frontendOutPath)) {
         logger.info("📤 Uploading frontend to S3...");
 
         // Get bucket name from stack outputs
@@ -1738,45 +1510,49 @@ async function deployCardCountingTrainerInternal(
       // Ignore error - this is just informational
     }
 
-    // Create Cognito admin user if requested
-    if (!options.skipUserCreation) {
+    logger.success("🎉 Backroom Blackjack deployment completed successfully!");
+    logger.info("");
+    logger.info("👤 Default users created by CloudFormation:");
+    logger.info(`   • Admin: ${options.adminEmail || 'vesnathan+bb-admin@gmail.com'} (group: admin)`);
+    logger.info(`   • Test:  ${options.testUserEmail || 'vesnathan+bb-user@gmail.com'} (group: user)`);
+    logger.info("   • Password: Temp1234!");
+    logger.info("");
+
+    // Seed database with test users for leaderboards
+    try {
+      logger.info("🌱 Seeding database with test users...");
+      const tableName = `backroom-blackjack-datatable-${options.stage}`;
+
+      // Get SeedRoleArn from stack outputs (if available)
+      let seedRoleArn: string | undefined;
       try {
-        const adminEmail = options.adminEmail || process.env.ADMIN_EMAIL;
-        if (!adminEmail) {
-          logger.info(
-            "No admin email provided (options.adminEmail or ADMIN_EMAIL). Skipping Cognito admin creation.",
-          );
-        } else {
-          logger.info(`👤 Creating Cognito admin user for CCT: ${adminEmail}`);
-          const userManager = new UserSetupManager(region, "cardcountingtrainer");
-          await userManager.createAdminUser({
-            stage: options.stage,
-            adminEmail,
-            region,
-            stackType: "cardcountingtrainer",
-          });
-          logger.success("✓ Cognito admin user created for CCT");
+        const stackOutputs = await cfn.send(
+          new DescribeStacksCommand({ StackName: stackName }),
+        );
+        seedRoleArn = stackOutputs.Stacks?.[0]?.Outputs?.find(
+          (o) => o.OutputKey === "SeedRoleArn"
+        )?.OutputValue;
+        if (seedRoleArn) {
+          logger.info(`   Using seed role: ${seedRoleArn}`);
         }
-      } catch (userError: any) {
-        const errorMessage = userError instanceof Error ? userError.message : String(userError);
-        logger.error(`CCT Cognito admin creation failed: ${errorMessage || 'No error message'}`);
-
-        // Log AWS SDK specific error properties
-        if (userError && typeof userError === 'object') {
-          if (userError.name) logger.debug(`Error name: ${userError.name}`);
-          if (userError.code) logger.debug(`Error code: ${userError.code}`);
-          if (userError.$metadata) logger.debug(`AWS Metadata: ${JSON.stringify(userError.$metadata)}`);
-          if (userError.message) logger.debug(`Error message: ${userError.message}`);
-          if (userError.stack) logger.debug(`Error stack: ${userError.stack}`);
-
-          // Log full error object
-          logger.debug(`Full error: ${JSON.stringify(userError, Object.getOwnPropertyNames(userError), 2)}`);
-        }
-        // don't throw to avoid failing the entire deploy; surface error to logs
+      } catch (outputError) {
+        // SeedRoleArn may not exist if HasDeployUser condition is false
+        logger.debug("SeedRoleArn not found in outputs - seeding with current credentials");
       }
-    }
 
-    logger.success("🎉 Card Counting Trainer deployment completed successfully!");
+      await seedDB({
+        region: region,
+        tableName: tableName,
+        stage: options.stage,
+        skipConfirmation: true, // Don't wait during automated deploy
+        seedRoleArn: seedRoleArn,
+        externalId: seedRoleArn ? `backroom-blackjack-seed-${options.stage}` : undefined,
+      });
+      logger.success("✓ Database seeded successfully");
+    } catch (seedError: any) {
+      logger.warning(`Database seeding failed (non-critical): ${seedError.message}`);
+      // Don't throw - seeding is optional
+    }
   } catch (error: any) {
     logger.error(`Deployment failed: ${error.message}`);
     throw error;
@@ -1784,14 +1560,11 @@ async function deployCardCountingTrainerInternal(
 }
 
 // Main entry point
-if (require.main === module) {
-  const { Command } = require("commander");
-  const inquirer = require("inquirer");
-  const program = new Command();
+const program = new Command();
 
   program
     .name("deploy")
-    .description("Deploy Card Counting Trainer infrastructure")
+    .description("Deploy Backroom Blackjack infrastructure")
     .option("-s, --stage <stage>", "Deployment stage (dev/prod)")
     .option("-a, --action <action>", "Deployment action (update/replace/remove)")
     .option("-r, --region <region>", "AWS region", "ap-southeast-2")
@@ -1799,8 +1572,10 @@ if (require.main === module) {
     .option("--skip-resolvers-build", "Skip resolvers compilation")
     .option("--skip-user-creation", "Skip admin user creation")
     .option("--admin-email <email>", "Admin user email")
+    .option("--test-user-email <email>", "Test user email (regular user)")
     .option("--domain-name <domain>", "Custom domain (prod only)")
     .option("--hosted-zone-id <id>", "Route53 hosted zone ID (prod only)")
+    .option("--certificate-arn <arn>", "ACM Certificate ARN in us-east-1 (prod only)")
     .option("--disable-rollback", "Disable CloudFormation rollback on failure")
     .option("--debug-mode", "Enable debug logging")
     .option("--non-interactive", "Skip interactive prompts", false)
@@ -1810,82 +1585,61 @@ if (require.main === module) {
 
   (async () => {
     try {
-      let stage = opts.stage;
-      let action = opts.action;
-      let adminEmail = opts.adminEmail;
-      let skipUserCreation = opts.skipUserCreation;
-      let disableRollback = opts.disableRollback;
+      // Use command-line options with defaults (no interactive menu)
+      const stage = opts.stage || "dev";
+      const action = opts.action || DeploymentAction.UPDATE;
+      const skipUserCreation = opts.skipUserCreation;
 
-      // Interactive prompts if not in non-interactive mode
-      if (!opts.nonInteractive) {
-        console.log("\n🎯 Card Counting Trainer Deployment\n");
+      // Default users - created automatically if not skipped
+      const DEFAULT_ADMIN_EMAIL = "vesnathan+bb-admin@gmail.com";
+      const DEFAULT_TEST_USER_EMAIL = "vesnathan+bb-user@gmail.com";
 
-        const answers = await inquirer.prompt([
-          {
-            type: "list",
-            name: "stage",
-            message: "Select deployment stage:",
-            choices: ["dev", "prod"],
-            default: "dev",
-            when: () => !stage,
-          },
-          {
-            type: "list",
-            name: "action",
-            message: "Select deployment action:",
-            choices: [
-              {
-                name: "Update - Deploy changes to existing stack",
-                value: "update",
-              },
-              {
-                name: "Replace - Delete and recreate stack (for major changes)",
-                value: "replace",
-              },
-              { name: "Remove - Delete stack completely", value: "remove" },
-            ],
-            default: "update",
-            when: () => !action,
-          },
-          {
-            type: "input",
-            name: "adminEmail",
-            message: "Admin email (leave blank to skip user creation):",
-            default: "vesnathan+bb@gmail.com",
-            when: (ans: any) => ans.action !== "remove" && !adminEmail && !skipUserCreation,
-          },
-          {
-            type: "confirm",
-            name: "skipUserCreation",
-            message: "Skip Cognito user creation? (Use if admin user already exists)",
-            default: false,
-            when: (ans: any) => ans.action !== "remove" && !opts.skipUserCreation && !ans.adminEmail,
-          },
-          {
-            type: "confirm",
-            name: "disableRollback",
-            message: "Disable CloudFormation rollback on failure? (Useful for debugging)",
-            default: false,
-            when: (ans: any) => ans.action === "replace" && !opts.disableRollback,
-          },
-        ]);
+      // Use CLI args, env vars, or defaults
+      const adminEmail = opts.adminEmail || process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
+      const testUserEmail = opts.testUserEmail || process.env.TEST_USER_EMAIL || DEFAULT_TEST_USER_EMAIL;
+      const disableRollback = opts.disableRollback;
 
-        if (answers.stage) stage = answers.stage;
-        if (answers.action) action = answers.action as DeploymentAction;
-        if (answers.adminEmail) adminEmail = answers.adminEmail;
-        if (answers.skipUserCreation) skipUserCreation = true;
-        if (answers.disableRollback) disableRollback = true;
+      console.log("\n🎯 Backroom Blackjack Deployment\n");
+      console.log(`   Stage: ${stage}`);
+      console.log(`   Action: ${action}`);
+      console.log("");
+
+      // Get domain config from env if not provided via CLI (for prod)
+      const domainName = opts.domainName || process.env.DOMAIN_NAME;
+      const hostedZoneId = opts.hostedZoneId || process.env.HOSTED_ZONE_ID;
+      const certificateArn = opts.certificateArn || process.env.CERTIFICATE_ARN;
+
+      // Check AWS credentials first
+      logger.info("Checking AWS credentials...");
+      const { valid: credsValid } = await checkCredentials();
+
+      if (!credsValid) {
+        const success = await promptForCredentials();
+        if (!success) {
+          process.exit(1);
+        }
+      } else {
+        logger.info("AWS credentials OK\n");
       }
 
-      // Default stage to dev if still not set
-      if (!stage) stage = "dev";
-      if (!action) action = DeploymentAction.UPDATE;
+      // Check bootstrap resources (skip for remove action)
+      if (action !== DeploymentAction.REMOVE) {
+        logger.info("Checking bootstrap resources...");
+        const bootstrap = await checkBootstrapResources(stage);
+
+        if (!bootstrap.ready) {
+          printBootstrapInstructions(bootstrap);
+          process.exit(1);
+        }
+
+        logger.info("Bootstrap resources OK\n");
+      }
 
       // Handle remove action
       if (action === DeploymentAction.REMOVE) {
-        logger.info("🗑️  Removing Card Counting Trainer stack...");
+        logger.info("🗑️  Removing Backroom Blackjack stack...");
         const cfn = new CloudFormationClient({ region: opts.region });
-        const stackName = getStackName(StackType.CardCountingTrainer, stage);
+        const stackName = getStackName(StackType.Backroom_Blackjack, stage);
 
         // First, empty all S3 buckets associated with this stack
         try {
@@ -1935,25 +1689,14 @@ if (require.main === module) {
         // Delete the stack with retry logic for failed resources
         await forceDeleteStack(cfn, stackName);
         logger.success(`✓ Stack ${stackName} removed successfully`);
-
-        // Clean up orphaned resources after stack removal
-        logger.info("🧹 Cleaning up orphaned resources...");
-        const cleanupAfterRemove = new OrphanCleanup({
-          region: opts.region,
-          appName: "cardcountingtrainer",
-          stage,
-          dryRun: false,
-        });
-        await cleanupAfterRemove.cleanupAll();
-
         return;
       }
 
       // Handle replace action
       if (action === DeploymentAction.REPLACE) {
-        logger.info("🔄 Replacing Card Counting Trainer stack (delete + recreate)...");
+        logger.info("🔄 Replacing Backroom Blackjack stack (delete + recreate)...");
         const cfn = new CloudFormationClient({ region: opts.region });
-        const stackName = getStackName(StackType.CardCountingTrainer, stage);
+        const stackName = getStackName(StackType.Backroom_Blackjack, stage);
 
         try {
           // Check if stack exists
@@ -2024,30 +1767,22 @@ if (require.main === module) {
           }
         }
 
-        // Clean up orphaned resources after stack deletion
-        logger.info("🧹 Cleaning up orphaned resources...");
-        const cleanup = new OrphanCleanup({
-          region: opts.region,
-          appName: "cardcountingtrainer",
-          stage,
-          dryRun: false,
-        });
-        await cleanup.cleanupAll();
-
         // Continue to deployment below
         logger.info("Creating new stack...");
       }
 
       // Proceed with deployment (for update or replace actions)
-      await deployCardCountingTrainer({
+      await deployBackroomBlackjack({
         stage,
         region: opts.region,
         skipFrontendBuild: opts.skipFrontendBuild,
         skipResolversBuild: opts.skipResolversBuild,
         skipUserCreation: skipUserCreation,
         adminEmail: adminEmail,
-        domainName: opts.domainName,
-        hostedZoneId: opts.hostedZoneId,
+        testUserEmail: testUserEmail,
+        domainName: domainName, // Uses CLI arg or DOMAIN_NAME from .env
+        hostedZoneId: hostedZoneId, // Uses CLI arg or HOSTED_ZONE_ID from .env
+        certificateArn: certificateArn, // Uses CLI arg or CERTIFICATE_ARN from .env
         disableRollback: disableRollback,
         debugMode: opts.debugMode,
       });
@@ -2062,4 +1797,3 @@ if (require.main === module) {
       process.exit(1);
     }
   })();
-}

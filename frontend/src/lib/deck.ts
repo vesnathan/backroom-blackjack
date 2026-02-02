@@ -232,3 +232,47 @@ export function calculateTrueCount(
 ): number {
   return Math.floor(runningCount / decksRemaining);
 }
+
+/**
+ * Result of creating a mid-shoe (simulating sitting down at a table mid-game)
+ */
+export interface MidShoeResult {
+  shoe: Card[];
+  cardsBurned: number;
+}
+
+/**
+ * Create a shoe at a random point through the game.
+ * Simulates sitting down at a new table that's already mid-shoe.
+ * The player starts counting from 0 (they don't know what was played before).
+ *
+ * @param numDecks Number of decks (1, 2, 4, 6, or 8)
+ * @param countingSystem The counting system to use
+ * @param minBurnPercent Minimum percentage to burn (default 20%)
+ * @param maxBurnPercent Maximum percentage to burn (default 70%)
+ * @returns The shoe and number of cards burned
+ */
+export function createMidShoe(
+  numDecks: number,
+  countingSystem: CountingSystem = CountingSystem.HI_LO,
+  minBurnPercent: number = 20,
+  maxBurnPercent: number = 70,
+): MidShoeResult {
+  // Create and shuffle a full shoe
+  const fullShoe = createAndShuffleShoe(numDecks, countingSystem);
+  const totalCards = fullShoe.length;
+
+  // Calculate random burn amount between min and max percent
+  const burnPercent =
+    minBurnPercent + Math.random() * (maxBurnPercent - minBurnPercent);
+  const cardsToBurn = Math.floor(totalCards * (burnPercent / 100));
+
+  // "Burn" the cards by removing them from the front of the shoe
+  // These cards are played but unknown to the player (like sitting down mid-shoe)
+  const remainingShoe = fullShoe.slice(cardsToBurn);
+
+  return {
+    shoe: remainingShoe,
+    cardsBurned: cardsToBurn,
+  };
+}

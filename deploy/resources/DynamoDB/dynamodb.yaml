@@ -5,7 +5,7 @@ Parameters:
   AppName:
     Type: String
     Description: Application Name
-    Default: cardcountingtrainer
+    Default: backroom-blackjack
 
 Resources:
   DynamoDBRole:
@@ -66,6 +66,8 @@ Resources:
   # 5. Get User's Count Peeks: PK=USER#{userId}, SK begins_with COUNT_PEEK#
   # 6. Get Game Session by ID: PK=SESSION#{sessionId}, SK=METADATA
   # 7. Get Leaderboard: GSI1PK=LEADERBOARD#{type}, GSI1SK={score}#{userId}
+  # 8. Get User by Stripe Customer ID: GSI2PK=STRIPE#{customerId}, GSI2SK=CUSTOMER
+  # 9. Get Webhook Log: PK=WEBHOOK_LOG, SK={provider}#{timestamp}#{eventId}
   CCTDataTable:
     Type: AWS::DynamoDB::Table
     DependsOn: DynamoDBRole
@@ -79,6 +81,10 @@ Resources:
         - AttributeName: "GSI1PK"
           AttributeType: "S"
         - AttributeName: "GSI1SK"
+          AttributeType: "S"
+        - AttributeName: "GSI2PK"
+          AttributeType: "S"
+        - AttributeName: "GSI2SK"
           AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
@@ -95,6 +101,14 @@ Resources:
               KeyType: "RANGE"
           Projection:
             ProjectionType: "ALL"
+        - IndexName: "GSI2"
+          KeySchema:
+            - AttributeName: "GSI2PK"
+              KeyType: "HASH"
+            - AttributeName: "GSI2SK"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
       SSESpecification:
         SSEEnabled: false
       PointInTimeRecoverySpecification:
@@ -103,7 +117,7 @@ Resources:
         StreamViewType: NEW_AND_OLD_IMAGES
       Tags:
         - Key: "Project"
-          Value: "CardCountingTrainer"
+          Value: "BackroomBlackjack"
         - Key: "Stage"
           Value: !Ref Stage
 

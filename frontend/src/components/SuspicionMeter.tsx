@@ -63,7 +63,7 @@ export default function SuspicionMeter() {
     <div
       style={{
         position: "fixed",
-        top: "80px",
+        bottom: "20px",
         left: "20px",
         width: "220px",
         backgroundColor: "rgba(0, 0, 0, 0.95)",
@@ -158,17 +158,6 @@ export default function SuspicionMeter() {
             }}
           >
             DEALER SUSPICION
-            {currentDealer.onYourSide && (
-              <span
-                style={{
-                  color: "#4CAF50",
-                  marginLeft: "6px",
-                  fontSize: "10px",
-                }}
-              >
-                (On Your Side)
-              </span>
-            )}
           </div>
           <div
             style={{
@@ -184,17 +173,14 @@ export default function SuspicionMeter() {
               style={{
                 height: "100%",
                 width: `${dealerSuspicion}%`,
-                backgroundColor: currentDealer.onYourSide
-                  ? "#4CAF50"
-                  : dealerSuspicion < 30
+                backgroundColor:
+                  dealerSuspicion < 30
                     ? "#4CAF50"
                     : dealerSuspicion < 60
                       ? "#FFC107"
                       : "#F44336",
                 transition: "width 0.5s ease-out, background-color 0.3s ease",
-                boxShadow: currentDealer.onYourSide
-                  ? "0 0 8px #4CAF50"
-                  : `0 0 8px ${dealerSuspicion < 30 ? "#4CAF50" : dealerSuspicion < 60 ? "#FFC107" : "#F44336"}`,
+                boxShadow: `0 0 8px ${dealerSuspicion < 30 ? "#4CAF50" : dealerSuspicion < 60 ? "#FFC107" : "#F44336"}`,
               }}
             />
             <div

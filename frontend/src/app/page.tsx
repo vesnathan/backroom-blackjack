@@ -41,6 +41,7 @@ import { useHeatMap } from "@/hooks/useHeatMap";
 import { useDealerCallouts } from "@/hooks/useDealerCallouts";
 import { usePitBossWarnings } from "@/hooks/usePitBossWarnings";
 import { useBadgeIntegration } from "@/hooks/useBadgeIntegration";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useBadgeSyncToBackend } from "@/hooks/useBadgeSyncToBackend";
 import { useChipsSync } from "@/hooks/useChipsSync";
 import { calculateDecksRemaining, calculateTrueCount } from "@/lib/deck";
@@ -76,6 +77,9 @@ export default function GamePage() {
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(true);
   const [musicStarted, setMusicStarted] = useState(false);
+
+  // Mobile detection for initialization
+  const isMobileMode = useIsMobile();
 
   // Game settings
   const [gameSettings, setGameSettings] = useState<GameSettings>(
@@ -567,6 +571,7 @@ export default function GamePage() {
     setCurrentPitBoss,
     setInitialized,
     devTestingMode,
+    isMobileMode,
   );
 
   // Conversation triggers hook

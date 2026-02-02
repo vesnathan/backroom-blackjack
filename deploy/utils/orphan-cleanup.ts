@@ -117,9 +117,8 @@ export class OrphanCleanup {
     const patterns = [
       `${this.options.appName}-${this.options.stage}`,
       `${this.options.appName.toLowerCase()}-${this.options.stage}`,
-      `cardcountingtrainer-${this.options.stage}`,
-      `bjcct-${this.options.stage}`,
-      `cct-${this.options.stage}`,
+      `backroomblackjack-${this.options.stage}`,
+      `backroom-blackjack-${this.options.stage}`,
     ];
     return patterns.some((pattern) => resourceName.includes(pattern));
   }
@@ -542,7 +541,7 @@ export class OrphanCleanup {
  */
 if (require.main === module) {
   const region = process.env.AWS_REGION || "ap-southeast-2";
-  const appName = "cardcountingtrainer";
+  const appName = "backroom-blackjack";
   const stage = process.argv[2] || "dev";
   const dryRun = process.argv.includes("--dry-run");
 

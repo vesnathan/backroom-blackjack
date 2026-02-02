@@ -6,11 +6,7 @@ import {
   getPersonalityReaction,
   getEndOfHandReaction,
 } from "@/data/dialogue";
-import { determineHandResult, calculatePayout } from "@/lib/dealer";
-import {
-  getBlackjackPayoutMultiplier,
-  BlackjackPayout,
-} from "@/types/gameSettings";
+import { determineHandResult } from "@/lib/dealer";
 
 export interface Reaction {
   playerId: string;
@@ -170,16 +166,17 @@ export function generateBustReaction(ai: AIPlayer): Reaction | null {
 export function generateEndOfHandReactions(
   aiPlayers: AIPlayer[],
   dealerHand: PlayerHand,
-  blackjackPayout: BlackjackPayout,
+  skipPlayerIndices?: Set<number>,
 ): Reaction[] {
   const reactions: Reaction[] = [];
 
-  const bjPayoutMultiplier = getBlackjackPayoutMultiplier(blackjackPayout);
+  aiPlayers.forEach((ai, idx) => {
+    // Skip players who already celebrated (e.g., blackjack during dealing)
+    if (skipPlayerIndices?.has(idx)) {
+      return;
+    }
 
-  aiPlayers.forEach((ai) => {
     const result = determineHandResult(ai.hand, dealerHand);
-    const payout = calculatePayout(ai.hand, result, bjPayoutMultiplier);
-    const netGain = payout - ai.hand.bet;
     const handValue = calculateHandValue(ai.hand.cards);
     const dealerValue = calculateHandValue(dealerHand.cards);
 
@@ -212,28 +209,35 @@ export function generateEndOfHandReactions(
     }
 
     // Determine outcome type and reaction chance
+    // Use result directly since AI bet amounts are 0 (making netGain unreliable)
     let outcomeType: "bigWin" | "smallWin" | "push" | "smallLoss" | "bigLoss" =
       "push";
     let reactionChance = 0;
 
     if (result === "BLACKJACK") {
+      // Blackjack players who already celebrated during dealing are skipped at line ~175
+      // This is a redundant safety check to ensure no double comments
+      if (skipPlayerIndices?.has(idx)) {
+        return; // Already celebrated during dealing
+      }
       outcomeType = "bigWin";
       reactionChance = 0.8; // Very likely to react to blackjack
-    } else if (netGain > ai.hand.bet * 0.5) {
+    } else if (result === "WIN") {
+      // Dealer busted or player beat dealer - treat as big win
       outcomeType = "bigWin";
-      reactionChance = 0.7; // Likely to react to big win
-    } else if (netGain > 0) {
-      outcomeType = "smallWin";
-      reactionChance = 0.3; // Sometimes react to small win
-    } else if (netGain === 0) {
+      reactionChance = 0.7; // Likely to react to win
+    } else if (result === "PUSH") {
       outcomeType = "push";
       reactionChance = 0.1; // Rarely react to push
-    } else if (result === "BUST" || netGain < -ai.hand.bet * 0.5) {
+    } else if (result === "BUST") {
       outcomeType = "bigLoss";
-      reactionChance = 0.7; // Likely to react to big loss
+      reactionChance = 0.7; // Likely to react to bust
+    } else if (result === "LOSE") {
+      outcomeType = "bigLoss";
+      reactionChance = 0.5; // Likely to react to loss
     } else {
       outcomeType = "smallLoss";
-      reactionChance = 0.3; // Sometimes react to small loss
+      reactionChance = 0.3; // Sometimes react to other losses
     }
 
     // Get reaction from dialogue system
@@ -252,7 +256,7 @@ export function generateEndOfHandReactions(
         if (currentContext === "dealerBlackjack") {
           audioType = "dealer_blackjack";
           audioPriority = 2; // HIGH
-        } else if (outcomeType === "bigWin" || outcomeType === "smallWin") {
+        } else if (outcomeType === "bigWin") {
           audioType = "win";
           audioPriority = 1; // NORMAL
         } else {

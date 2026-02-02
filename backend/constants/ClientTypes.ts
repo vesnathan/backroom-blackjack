@@ -1,5 +1,5 @@
 /**
- * Cognito User Groups for Card Counting Trainer
+ * Cognito User Groups for Backroom Blackjack
  */
 export const COGNITO_GROUPS = ["admin", "user"];
 

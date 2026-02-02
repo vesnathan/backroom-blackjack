@@ -3,6 +3,14 @@ import { GamePhase, AIPlayer, PlayerHand } from "@/types/gameState";
 import { isBlackjack } from "@/lib/gameActions";
 import { debugLog } from "@/utils/debug";
 
+// Blackjack celebration messages for AI players
+const BLACKJACK_CELEBRATIONS = [
+  "BLACKJACK! YES!",
+  "Twenty-one baby!",
+  "Natural blackjack!",
+  "Blackjack! Woohoo!",
+];
+
 interface UseDealingPhaseParams {
   phase: GamePhase;
   aiPlayers: AIPlayer[];
@@ -24,6 +32,14 @@ interface UseDealingPhaseParams {
         >),
   ) => void;
   registerTimeout: (callback: () => void, delay: number) => void;
+  addSpeechBubble?: (
+    playerId: string,
+    message: string,
+    position: number,
+  ) => void;
+  setBlackjackCelebratedPlayers?: (
+    players: Set<number> | ((prev: Set<number>) => Set<number>),
+  ) => void;
 }
 
 /**
@@ -35,10 +51,13 @@ interface UseDealingPhaseParams {
 export function useDealingPhase({
   phase,
   aiPlayers,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dealerHand,
   setPlayersFinished,
   setPlayerActions,
   registerTimeout,
+  addSpeechBubble,
+  setBlackjackCelebratedPlayers,
 }: UseDealingPhaseParams) {
   // Track which players we've already checked for blackjack
   const checkedPlayers = useRef<Set<number>>(new Set());
@@ -69,6 +88,20 @@ export function useDealingPhase({
           setPlayersFinished((prev) => new Set(prev).add(idx));
           setPlayerActions((prev) => new Map(prev).set(idx, "BLACKJACK"));
 
+          // Show celebration speech bubble immediately
+          if (addSpeechBubble) {
+            const celebration =
+              BLACKJACK_CELEBRATIONS[
+                Math.floor(Math.random() * BLACKJACK_CELEBRATIONS.length)
+              ];
+            addSpeechBubble(`ai-${idx}`, celebration, ai.position);
+
+            // Track that this player has celebrated (by idx for consistency)
+            if (setBlackjackCelebratedPlayers) {
+              setBlackjackCelebratedPlayers((prev) => new Set(prev).add(idx));
+            }
+          }
+
           // Clear the BLACKJACK indicator after 2 seconds
           registerTimeout(() => {
             setPlayerActions((prev) => {
@@ -80,5 +113,13 @@ export function useDealingPhase({
         }
       }
     });
-  }, [phase, aiPlayers, setPlayersFinished, setPlayerActions, registerTimeout]);
+  }, [
+    phase,
+    aiPlayers,
+    setPlayersFinished,
+    setPlayerActions,
+    registerTimeout,
+    addSpeechBubble,
+    setBlackjackCelebratedPlayers,
+  ]);
 }

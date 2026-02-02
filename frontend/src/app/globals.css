@@ -1,6 +1,6 @@
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #6b0000; /* Casino red */
@@ -38,12 +38,14 @@ body::before {
   pointer-events: none;
 }
 
-.nextui-modal-container {
-  position: fixed !important;
+/* NextUI v2 modal wrapper override */
+[data-slot="wrapper"] {
   z-index: 9999 !important;
-  top: 0;
-  left: 0;
-  width: 100vw;
+}
+
+/* Ensure modal backdrop covers everything */
+[data-slot="backdrop"] {
+  z-index: 9998 !important;
 }
 
 /* Casino-themed styles */
@@ -105,5 +107,100 @@ body::before {
   }
   100% {
     opacity: 0;
+  }
+}
+
+/* Stat notification animations */
+@keyframes statBounceIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(5px) scale(1.02);
+  }
+  70% {
+    transform: translateY(-2px) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes statFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+/* Rotate device overlay styles */
+.rotate-device-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.95);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+}
+
+.rotate-device-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  animation: rotateHint 2s ease-in-out infinite;
+}
+
+.rotate-device-title {
+  color: #ffd700;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.rotate-device-message {
+  color: #ccc;
+  font-size: 16px;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.rotate-device-arrow {
+  margin-top: 32px;
+  font-size: 40px;
+  color: #ffd700;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes rotateHint {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(90deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
   }
 }

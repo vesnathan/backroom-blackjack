@@ -8,7 +8,7 @@ const parsed = JSON.parse(raw);
 const stage = process.env.NEXT_PUBLIC_ENVIRONMENT || process.env.STAGE || 'dev';
 console.log('Stage:', stage);
 
-const cctStack = parsed.stages?.[stage]?.stacks?.CardCountingTrainer;
+const cctStack = parsed.stages?.[stage]?.stacks?.Backroom_Blackjack;
 console.log('Stack found:', !!cctStack);
 console.log('Outputs count:', cctStack?.outputs?.length);
 
@@ -24,7 +24,7 @@ outputs.forEach(o => {
   console.log(`    Export: ${o.exportName}`);
 });
 
-const appName = 'cardcountingtrainer';
+const appName = 'backroom-blackjack';
 const find = (suffix) => {
   const candidates = [`${appName}-${stage}-${suffix}`.toLowerCase()];
   console.log('\nLooking for suffix:', suffix);

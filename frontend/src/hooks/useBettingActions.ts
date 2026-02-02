@@ -7,9 +7,6 @@ import {
   PlayerHand,
   SpeechBubble,
 } from "@/types/gameState";
-import { DealerCharacter } from "@/data/dealerCharacters";
-import { AudioQueueHook, AudioPriority } from "@/hooks/useAudioQueue";
-import { getDealerAudioPath } from "@/utils/audioHelpers";
 
 interface UseBettingActionsParams {
   currentBet: number;
@@ -38,8 +35,6 @@ interface UseBettingActionsParams {
           prev: Array<{ bet: number; trueCount: number }>,
         ) => Array<{ bet: number; trueCount: number }>),
   ) => void;
-  currentDealer: DealerCharacter | null;
-  audioQueue: AudioQueueHook;
 }
 
 export function useBettingActions({
@@ -57,14 +52,13 @@ export function useBettingActions({
   setPlayerHand,
   setDealerHand,
   setPreviousBet,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setSpeechBubbles,
   setAIPlayers,
   dealInitialCards,
   registerTimeout,
   trueCount,
   setBetHistory,
-  currentDealer,
-  audioQueue,
 }: UseBettingActionsParams) {
   // eslint-disable-next-line sonarjs/no-duplicate-string
   const handleConfirmBet = useCallback(() => {
@@ -100,18 +94,6 @@ export function useBettingActions({
         `Bet tracked: $${currentBet} at true count ${trueCount.toFixed(2)}`,
       );
 
-      // Dealer says "No more bets"
-      if (currentDealer) {
-        const audioPath = getDealerAudioPath(currentDealer.id, "no_more_bets");
-        audioQueue.queueAudio({
-          id: `dealer-no-more-bets-${Date.now()}`,
-          audioPath,
-          priority: AudioPriority.NORMAL,
-          playerId: "dealer",
-          message: "No more bets",
-        });
-      }
-
       setPhase("DEALING");
       setDealerRevealed(false);
       setPlayerHand({ cards: [], bet: currentBet });
@@ -124,7 +106,7 @@ export function useBettingActions({
         return prev - currentBet;
       });
       setPreviousBet(currentBet);
-      setSpeechBubbles([]); // Clear any lingering speech bubbles
+      // Note: Don't clear speech bubbles here - let ongoing conversations finish
 
       // Reset AI hands (bet amount irrelevant for counting training)
       const updatedAI = aiPlayers.map((ai) => ({
@@ -165,13 +147,10 @@ export function useBettingActions({
     setDealerHand,
     setPlayerChips,
     setPreviousBet,
-    setSpeechBubbles,
     setAIPlayers,
     setBetHistory,
     dealInitialCards,
     registerTimeout,
-    currentDealer,
-    audioQueue,
   ]);
 
   const handleClearBet = useCallback(() => {

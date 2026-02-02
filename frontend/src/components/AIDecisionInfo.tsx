@@ -19,7 +19,8 @@ export default function AIDecisionInfo({
   dealerUpCard,
   basicStrategyAction,
   canSplit,
-  canDouble: _canDouble,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  canDouble,
   canSurrender,
 }: AIDecisionInfoProps) {
   // Calculate hand value

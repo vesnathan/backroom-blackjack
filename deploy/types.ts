@@ -26,6 +26,7 @@ export interface DeploymentOptions {
   skipUserSetup?: boolean;
   debugMode?: boolean;
   adminEmail?: string;
+  testUserEmail?: string;
   skipUserCreation?: boolean;
   roleArn?: string;
   tags?: { [key: string]: string };
@@ -33,6 +34,7 @@ export interface DeploymentOptions {
   skipWAF?: boolean; // Skip WAF dependency (useful for dev to save costs)
   domainName?: string; // Custom domain name for CloudFront (prod only)
   hostedZoneId?: string; // Route53 Hosted Zone ID for domain validation (prod only)
+  certificateArn?: string; // ACM Certificate ARN in us-east-1 for CloudFront (prod only)
 }
 
 export interface ForceDeleteOptions {
@@ -47,7 +49,7 @@ export enum StackType {
   CWL = "CWL",
   AwsExample = "AwsExample",
   TheStoryHub = "TheStoryHub",
-  CardCountingTrainer = "CardCountingTrainer",
+  Backroom_Blackjack = "Backroom_Blackjack",
   LawnOrder = "LawnOrder",
   AppBuilderStudio = "AppBuilderStudio",
 }
@@ -58,47 +60,47 @@ export const STACK_ORDER: StackType[] = [
   StackType.CWL,
   StackType.AwsExample,
   StackType.TheStoryHub,
-  StackType.CardCountingTrainer,
+  StackType.Backroom_Blackjack,
   StackType.LawnOrder,
   StackType.AppBuilderStudio,
 ];
 
 export const TEMPLATE_PATHS: Record<StackType, string> = {
-  [StackType.WAF]: join(__dirname, "templates/waf/cfn-template.yaml"),
-  [StackType.Shared]: join(__dirname, "templates/shared/cfn-template.yaml"),
-  [StackType.CWL]: join(__dirname, "templates/cwl/cfn-template.yaml"),
+  [StackType.WAF]: join(import.meta.dirname, "templates/waf/cfn-template.yaml"),
+  [StackType.Shared]: join(import.meta.dirname, "templates/shared/cfn-template.yaml"),
+  [StackType.CWL]: join(import.meta.dirname, "templates/cwl/cfn-template.yaml"),
   [StackType.AwsExample]: join(
-    __dirname,
+    import.meta.dirname,
     "templates/aws-example/cfn-template.yaml",
   ),
   [StackType.TheStoryHub]: join(
-    __dirname,
+    import.meta.dirname,
     "templates/the-story-hub/cfn-template.yaml",
   ),
-  [StackType.CardCountingTrainer]: join(
-    __dirname,
+  [StackType.Backroom_Blackjack]: join(
+    import.meta.dirname,
     "cfn-template.yaml",
   ),
   [StackType.LawnOrder]: join(
-    __dirname,
+    import.meta.dirname,
     "templates/lawn-order/cfn-template.yaml",
   ),
   [StackType.AppBuilderStudio]: join(
-    __dirname,
+    import.meta.dirname,
     "templates/app-builder-studio/cfn-template.yaml",
   ),
 };
 
 export const TEMPLATE_RESOURCES_PATHS: Record<StackType, string> = {
-  [StackType.WAF]: join(__dirname, "templates/waf/"),
-  [StackType.Shared]: join(__dirname, "templates/shared/"),
-  [StackType.CWL]: join(__dirname, "templates/cwl/"),
-  [StackType.AwsExample]: join(__dirname, "templates/aws-example/"),
-  [StackType.TheStoryHub]: join(__dirname, "templates/the-story-hub/"),
-  [StackType.CardCountingTrainer]: join(__dirname, "resources/"),
-  [StackType.LawnOrder]: join(__dirname, "templates/lawn-order/"),
+  [StackType.WAF]: join(import.meta.dirname, "templates/waf/"),
+  [StackType.Shared]: join(import.meta.dirname, "templates/shared/"),
+  [StackType.CWL]: join(import.meta.dirname, "templates/cwl/"),
+  [StackType.AwsExample]: join(import.meta.dirname, "templates/aws-example/"),
+  [StackType.TheStoryHub]: join(import.meta.dirname, "templates/the-story-hub/"),
+  [StackType.Backroom_Blackjack]: join(import.meta.dirname, "resources/"),
+  [StackType.LawnOrder]: join(import.meta.dirname, "templates/lawn-order/"),
   [StackType.AppBuilderStudio]: join(
-    __dirname,
+    import.meta.dirname,
     "templates/app-builder-studio/",
   ),
 };
@@ -106,8 +108,8 @@ export const TEMPLATE_RESOURCES_PATHS: Record<StackType, string> = {
 export const getStackName = (stackType: StackType, stage: string) =>
   `${String(stackType).toLowerCase().replace(/_/g, "-")}-${stage}`;
 
-export const getTemplateBucketName = (stage: string) =>
-  `cardcountingtrainer-templates-${stage}`;
+export const getTemplateBucketName = (_stage?: string) =>
+  `backroom-blackjack-deploy-templates`;
 
 export const getTemplateBody = async (
   stackType: StackType,

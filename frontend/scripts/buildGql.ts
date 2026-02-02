@@ -72,7 +72,9 @@ const buildGql = async () => {
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
       const tmpConfigPath = path.resolve(__dirname, "../codegen.temp.yml");
-      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ../shared/src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config: {}\n`;
+      // Use enumsAsConst to generate const objects instead of TypeScript enums
+      // This is required for AppSync resolvers - TypeScript enums compile to IIFEs which AppSync doesn't support
+      const yaml = `schema: "${schemaPath}"\ngenerates:\n  ../shared/src/types/gqlTypes.ts:\n    plugins:\n      - typescript\n      - typescript-operations\n    config:\n      enumsAsConst: true\n`;
       fs.writeFileSync(tmpConfigPath, yaml, "utf8");
 
       // eslint-disable-next-line no-console

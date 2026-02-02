@@ -9,6 +9,7 @@ import { useUIState } from "@/contexts/UIStateContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useStatNotifications } from "@/hooks/useStatNotifications";
 import { StatsNotification } from "@/components/StatsNotification";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 const BORDER_GOLD = "2px solid #FFD700";
 const BG_GOLD_MENU_HOVER = "rgba(255, 215, 0, 0.2)";
@@ -18,8 +19,13 @@ const SUBMENU_PADDING = "12px 16px 12px 32px";
 const JUSTIFY_SPACE_BETWEEN = "space-between";
 
 export default function StatsBar() {
-  const { currentStreak, playerChips, chipsLoading, currentScore, scoreMultiplier } =
-    useGameState();
+  const {
+    currentStreak,
+    playerChips,
+    chipsLoading,
+    currentScore,
+    scoreMultiplier,
+  } = useGameState();
 
   const {
     setShowSettings,
@@ -42,61 +48,112 @@ export default function StatsBar() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showChipStore, setShowChipStore] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { isAuthenticated, isLoading, isAdmin, user, refresh } = useAuth();
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   // Click-away to close menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowMoreMenu(false);
+        setShowMobileMenu(false);
       }
     };
 
-    if (showMoreMenu) {
+    if (showMoreMenu || showMobileMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showMoreMenu]);
+  }, [showMoreMenu, showMobileMenu]);
+
+  // Close mobile menu on navigation
+  const handleMobileNavigation = (action: () => void) => {
+    action();
+    setShowMobileMenu(false);
+  };
 
   const handleLogout = async () => {
     await signOut();
     await refresh();
   };
 
-  return (
-    <>
-      {/* Top left stats menu */}
-      <div
-        ref={menuRef}
-        style={{
-          position: "fixed",
-          top: "10px",
-          right: "20px",
-          backgroundColor: "rgba(0, 0, 0, 0.95)",
-          border: BORDER_GOLD,
-          borderRadius: "8px",
-          minWidth: "180px",
-          zIndex: 1000,
-          overflow: "hidden",
-        }}
-      >
+  // Mobile menu button styles
+  const mobileMenuButtonStyle: React.CSSProperties = {
+    position: "fixed",
+    top: "10px",
+    right: "10px",
+    width: "44px",
+    height: "44px",
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    border: BORDER_GOLD,
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: 1001,
+    fontSize: "20px",
+  };
+
+  // Mobile slide-in menu styles
+  const mobileMenuStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    right: 0,
+    width: "280px",
+    maxWidth: "85vw",
+    height: "100vh",
+    backgroundColor: "rgba(0, 0, 0, 0.98)",
+    borderLeft: BORDER_GOLD,
+    zIndex: 1000,
+    overflowY: "auto",
+    transform: showMobileMenu ? "translateX(0)" : "translateX(100%)",
+    transition: "transform 0.3s ease-in-out",
+    paddingTop: "60px", // Space for close button
+  };
+
+  // Mobile overlay backdrop
+  const mobileOverlayStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    zIndex: 999,
+    opacity: showMobileMenu ? 1 : 0,
+    pointerEvents: showMobileMenu ? "auto" : "none",
+    transition: "opacity 0.3s ease-in-out",
+  };
+
+  // Render menu items - shared between mobile and desktop
+  const renderMenuItems = (forMobile: boolean) => {
+    const padding = forMobile ? "16px 20px" : "12px 16px";
+    const submenuPadding = forMobile ? "16px 20px 16px 36px" : SUBMENU_PADDING;
+    const fontSize = forMobile ? "16px" : "14px";
+    const minHeight = forMobile ? "48px" : "auto";
+
+    return (
+      <>
         {/* Chips - auth only */}
         {isAuthenticated && (
           <div
             style={{
-              padding: "12px 16px",
+              padding,
               color: "#FFF",
               borderBottom: MENU_ITEM_BORDER,
-              fontSize: "14px",
+              fontSize,
               fontWeight: "bold",
               display: "flex",
               justifyContent: JUSTIFY_SPACE_BETWEEN,
               alignItems: "center",
+              minHeight,
             }}
           >
             <span>💰 Chips</span>
@@ -104,16 +161,22 @@ export default function StatsBar() {
               {chipsLoading ? "..." : `$${playerChips.toLocaleString()}`}
               <button
                 type="button"
-                onClick={() => setShowChipStore(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowChipStore(true))
+                    : setShowChipStore(true)
+                }
                 title="Buy more chips"
                 style={{
                   backgroundColor: "transparent",
                   color: "#4CAF50",
                   border: "none",
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   padding: "0 4px",
+                  minWidth: forMobile ? "44px" : "auto",
+                  minHeight: forMobile ? "44px" : "auto",
                 }}
               >
                 +
@@ -126,14 +189,15 @@ export default function StatsBar() {
         {isAuthenticated && (
           <div
             style={{
-              padding: "12px 16px",
+              padding,
               color: "#FFF",
               borderBottom: MENU_ITEM_BORDER,
-              fontSize: "14px",
+              fontSize,
               fontWeight: "bold",
               display: "flex",
               justifyContent: JUSTIFY_SPACE_BETWEEN,
               alignItems: "center",
+              minHeight,
             }}
           >
             <span>⭐ Score</span>
@@ -145,14 +209,15 @@ export default function StatsBar() {
         {isAuthenticated && (
           <div
             style={{
-              padding: "12px 16px",
+              padding,
               color: scoreMultiplier > 1.0 ? "#4CAF50" : "#FFF",
               borderBottom: MENU_ITEM_BORDER,
-              fontSize: "14px",
+              fontSize,
               fontWeight: "bold",
               display: "flex",
               justifyContent: JUSTIFY_SPACE_BETWEEN,
               alignItems: "center",
+              minHeight,
             }}
           >
             <span>✨ Multiplier</span>
@@ -160,20 +225,20 @@ export default function StatsBar() {
           </div>
         )}
 
-        {/* More Menu Expander - only for authenticated users */}
-        {isAuthenticated && (
+        {/* More Menu Expander - only for authenticated on desktop */}
+        {isAuthenticated && !forMobile && (
           <button
             type="button"
             onClick={() => setShowMoreMenu(!showMoreMenu)}
             style={{
               display: "block",
               width: "100%",
-              padding: "12px 16px",
+              padding,
               backgroundColor: "transparent",
               color: "#FFF",
               border: "none",
               borderBottom: showMoreMenu ? MENU_ITEM_BORDER : "none",
-              fontSize: "14px",
+              fontSize,
               fontWeight: "bold",
               cursor: "pointer",
               textAlign: "left",
@@ -190,14 +255,18 @@ export default function StatsBar() {
           </button>
         )}
 
-        {/* Expanded Menu Items - always show for non-auth, expandable for auth */}
-        {(showMoreMenu || !isAuthenticated) && (
+        {/* Expanded Menu Items - always show for non-auth or mobile, expandable for auth desktop */}
+        {(showMoreMenu || !isAuthenticated || forMobile) && (
           <>
             {/* Show Count - auth only */}
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowCountPeek(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowCountPeek(true))
+                    : setShowCountPeek(true)
+                }
                 title={
                   scoreMultiplier > 1.0
                     ? "Peek at count (costs 10 chips, resets multiplier to 1.0x)"
@@ -206,16 +275,17 @@ export default function StatsBar() {
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -228,7 +298,7 @@ export default function StatsBar() {
                   <span>👁️ Show Count</span>
                   <span
                     style={{
-                      fontSize: "11px",
+                      fontSize: forMobile ? "13px" : "11px",
                       color: "#888",
                       fontWeight: "normal",
                       marginTop: "2px",
@@ -244,7 +314,11 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowStrategyCard(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowStrategyCard(true))
+                    : setShowStrategyCard(true)
+                }
                 disabled={strategyCardUsedThisHand}
                 title={
                   strategyCardUsedThisHand
@@ -254,17 +328,18 @@ export default function StatsBar() {
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: strategyCardUsedThisHand ? "#666" : "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: strategyCardUsedThisHand ? "not-allowed" : "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
                   opacity: strategyCardUsedThisHand ? 0.5 : 1,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   if (!strategyCardUsedThisHand) {
@@ -279,7 +354,7 @@ export default function StatsBar() {
                   <span>📊 Strategy</span>
                   <span
                     style={{
-                      fontSize: "11px",
+                      fontSize: forMobile ? "13px" : "11px",
                       color: strategyCardUsedThisHand ? "#666" : "#888",
                       fontWeight: "normal",
                       marginTop: "2px",
@@ -296,20 +371,29 @@ export default function StatsBar() {
             {/* Leaderboard */}
             <button
               type="button"
-              onClick={() => setShowLeaderboard(true)}
+              onClick={() =>
+                forMobile
+                  ? handleMobileNavigation(() => setShowLeaderboard(true))
+                  : setShowLeaderboard(true)
+              }
               style={{
                 display: "block",
                 width: "100%",
-                padding: isAuthenticated ? SUBMENU_PADDING : "12px 16px",
+                padding: isAuthenticated
+                  ? forMobile
+                    ? submenuPadding
+                    : SUBMENU_PADDING
+                  : padding,
                 backgroundColor: "transparent",
                 color: "#FFF",
                 border: "none",
                 borderBottom: MENU_ITEM_BORDER,
-                fontSize: "14px",
+                fontSize,
                 fontWeight: "bold",
                 cursor: "pointer",
                 textAlign: "left",
                 transition: TRANSITION_BG,
+                minHeight,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -325,20 +409,25 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowChat(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowChat(true))
+                    : setShowChat(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -355,20 +444,27 @@ export default function StatsBar() {
             {isAuthenticated && user && (
               <button
                 type="button"
-                onClick={() => router.push(`/profile?userId=${user.userId}`)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() =>
+                        router.push(`/profile?userId=${user.userId}`),
+                      )
+                    : router.push(`/profile?userId=${user.userId}`)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -384,20 +480,29 @@ export default function StatsBar() {
             {/* Supporters */}
             <button
               type="button"
-              onClick={() => router.push("/supporters")}
+              onClick={() =>
+                forMobile
+                  ? handleMobileNavigation(() => router.push("/supporters"))
+                  : router.push("/supporters")
+              }
               style={{
                 display: "block",
                 width: "100%",
-                padding: isAuthenticated ? SUBMENU_PADDING : "12px 16px",
+                padding: isAuthenticated
+                  ? forMobile
+                    ? submenuPadding
+                    : SUBMENU_PADDING
+                  : padding,
                 backgroundColor: "transparent",
                 color: "#FFF",
                 border: "none",
                 borderBottom: MENU_ITEM_BORDER,
-                fontSize: "14px",
+                fontSize,
                 fontWeight: "bold",
                 cursor: "pointer",
                 textAlign: "left",
                 transition: TRANSITION_BG,
+                minHeight,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -413,20 +518,25 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowHeatMap(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowHeatMap(true))
+                    : setShowHeatMap(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -443,20 +553,25 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowSessionStats(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowSessionStats(true))
+                    : setShowSessionStats(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -475,7 +590,15 @@ export default function StatsBar() {
                 type="button"
                 onClick={() => {
                   if (hasFeature("advancedAnalytics")) {
-                    setShowAdvancedAnalytics(true);
+                    if (forMobile) {
+                      handleMobileNavigation(() =>
+                        setShowAdvancedAnalytics(true),
+                      );
+                    } else {
+                      setShowAdvancedAnalytics(true);
+                    }
+                  } else if (forMobile) {
+                    handleMobileNavigation(() => router.push("/subscribe"));
                   } else {
                     router.push("/subscribe");
                   }
@@ -483,16 +606,17 @@ export default function StatsBar() {
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: hasFeature("advancedAnalytics") ? "#FFD700" : "#888",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -510,20 +634,29 @@ export default function StatsBar() {
             {/* Learn Counting - always available */}
             <button
               type="button"
-              onClick={() => router.push("/learn")}
+              onClick={() =>
+                forMobile
+                  ? handleMobileNavigation(() => router.push("/learn"))
+                  : router.push("/learn")
+              }
               style={{
                 display: "block",
                 width: "100%",
-                padding: isAuthenticated ? SUBMENU_PADDING : "12px 16px",
+                padding: isAuthenticated
+                  ? forMobile
+                    ? submenuPadding
+                    : SUBMENU_PADDING
+                  : padding,
                 backgroundColor: "transparent",
                 color: "#FFF",
                 border: "none",
                 borderBottom: MENU_ITEM_BORDER,
-                fontSize: "14px",
+                fontSize,
                 fontWeight: "bold",
                 cursor: "pointer",
                 textAlign: "left",
                 transition: TRANSITION_BG,
+                minHeight,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -539,20 +672,25 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowSettings(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowSettings(true))
+                    : setShowSettings(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -569,20 +707,25 @@ export default function StatsBar() {
             {isAdmin && (
               <button
                 type="button"
-                onClick={() => setShowAdminSettings(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowAdminSettings(true))
+                    : setShowAdminSettings(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: MENU_ITEM_BORDER,
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -599,20 +742,25 @@ export default function StatsBar() {
             {!isLoading && !isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowAuthModal(true)}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => setShowAuthModal(true))
+                    : setShowAuthModal(true)
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: "12px 16px",
+                  padding,
                   backgroundColor: "transparent",
                   color: "#FFF",
                   border: "none",
                   borderBottom: "none",
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BG_GOLD_MENU_HOVER;
@@ -629,19 +777,24 @@ export default function StatsBar() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => handleLogout()}
+                onClick={() =>
+                  forMobile
+                    ? handleMobileNavigation(() => handleLogout())
+                    : handleLogout()
+                }
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: SUBMENU_PADDING,
+                  padding: forMobile ? submenuPadding : SUBMENU_PADDING,
                   backgroundColor: "transparent",
                   color: "#F44336",
                   border: "none",
-                  fontSize: "14px",
+                  fontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   textAlign: "left",
                   transition: TRANSITION_BG,
+                  minHeight,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor =
@@ -656,7 +809,64 @@ export default function StatsBar() {
             )}
           </>
         )}
-      </div>
+      </>
+    );
+  };
+
+  return (
+    <>
+      {/* Mobile: Hamburger button */}
+      {isMobile && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            style={mobileMenuButtonStyle}
+            aria-label="Open menu"
+          >
+            {showMobileMenu ? "✕" : "☰"}
+          </button>
+
+          {/* Mobile overlay backdrop */}
+          <div
+            role="button"
+            tabIndex={0}
+            style={mobileOverlayStyle}
+            onClick={() => setShowMobileMenu(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+                setShowMobileMenu(false);
+              }
+            }}
+            aria-label="Close menu"
+          />
+
+          {/* Mobile slide-in menu */}
+          <div ref={menuRef} style={mobileMenuStyle}>
+            {renderMenuItems(true)}
+          </div>
+        </>
+      )}
+
+      {/* Desktop: Original menu */}
+      {!isMobile && (
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: "10px",
+            right: "20px",
+            backgroundColor: "rgba(0, 0, 0, 0.95)",
+            border: BORDER_GOLD,
+            borderRadius: "8px",
+            minWidth: "180px",
+            zIndex: 1000,
+            overflow: "hidden",
+          }}
+        >
+          {renderMenuItems(false)}
+        </div>
+      )}
 
       {/* Stat change notifications - appear below menu */}
       {isAuthenticated && notifications.length > 0 && (
@@ -664,7 +874,7 @@ export default function StatsBar() {
           style={{
             position: "fixed",
             top: "60px", // Below the menu
-            right: "20px",
+            right: isMobile ? "10px" : "20px",
             zIndex: 999,
           }}
         >

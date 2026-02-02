@@ -14,7 +14,6 @@ interface ConversationPromptProps {
   choices: ConversationChoice[];
   position: { left: string; top: string };
   timeLimit?: number; // Time in ms before auto-ignore (default 15000)
-  isPatreon?: boolean; // Whether this conversation mentions Patreon
   onResponse: (choiceIndex: number) => void;
   onIgnore: () => void;
   registerTimeout: (callback: () => void, delay: number) => NodeJS.Timeout;
@@ -26,7 +25,6 @@ export default function ConversationPrompt({
   choices,
   position,
   timeLimit = 15000,
-  isPatreon = false,
   onResponse,
   onIgnore,
   registerTimeout,
@@ -184,39 +182,6 @@ export default function ConversationPrompt({
             }}
           />
         </div>
-
-        {/* Patreon Button */}
-        {isPatreon && (
-          <a
-            href="https://www.patreon.com/YourPatreonPage"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "block",
-              marginTop: "12px",
-              padding: "8px 12px",
-              backgroundColor: "#FF424D",
-              color: "#FFF",
-              textDecoration: "none",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: "bold",
-              textAlign: "center",
-              transition: "all 0.2s ease",
-              border: "2px solid rgba(255, 255, 255, 0.2)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F96854";
-              e.currentTarget.style.borderColor = "#FFF";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "#FF424D";
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-            }}
-          >
-            ♥ Support on Patreon
-          </a>
-        )}
 
         {/* Ignore hint */}
         <div

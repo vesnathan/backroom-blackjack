@@ -7,10 +7,16 @@ import {
   SpeechBubble,
 } from "@/types/gameState";
 import { Card as GameCard } from "@/types/game";
-import { DealerCharacter } from "@/data/dealerCharacters";
-import { dealCard, calculateHandValue, isBlackjack } from "@/lib/gameActions";
+import {
+  dealCard,
+  calculateHandValue,
+  isBlackjack,
+  canSplit,
+} from "@/lib/gameActions";
+import { getBasicStrategyAction } from "@/lib/basicStrategy";
 import {
   CARD_ANIMATION_DURATION,
+  CARD_DEAL_GAP,
   SPLIT_SEPARATION_DELAY,
   SPLIT_CARD_DEAL_DELAY,
 } from "@/constants/animations";
@@ -22,6 +28,13 @@ import { createCardFromScenario } from "@/lib/testScenarioHelpers";
 
 // Module-level counter for unique card IDs
 let cardIdCounter = 0;
+
+// Module-level flag to prevent double dealing (can happen with React Strict Mode or race conditions)
+let dealingInProgress = false;
+
+// Debug message constant
+const AI_TURNS_TRANSITION_MSG =
+  "Moving to AI_TURNS phase (to check for remaining AI players)";
 
 interface UseGameActionsParams {
   // State
@@ -35,7 +48,6 @@ interface UseGameActionsParams {
   runningCount: number;
   shoesDealt: number;
   gameSettings: GameSettings;
-  currentDealer: DealerCharacter | null;
   playerChips: number;
   selectedTestScenario: TestScenario | null;
 
@@ -43,7 +55,6 @@ interface UseGameActionsParams {
   setPhase: (phase: GamePhase) => void;
   setCurrentBet: (bet: number) => void;
   setDealerRevealed: (revealed: boolean) => void;
-  setDealerCallout: (callout: string | null) => void;
   setPlayerHand: (
     hand: PlayerHand | ((prev: PlayerHand) => PlayerHand),
   ) => void;
@@ -74,7 +85,7 @@ interface UseGameActionsParams {
   ) => void;
   setShoe: (shoe: GameCard[]) => void;
   setCardsDealt: (cards: number) => void;
-  setRunningCount: (count: number) => void;
+  setRunningCount: (count: number | ((prev: number) => number)) => void;
   setShoesDealt: (shoes: number) => void;
   setInsuranceOffered: (offered: boolean) => void;
   setActivePlayerIndex: (index: number | null) => void;
@@ -97,6 +108,7 @@ interface UseGameActionsParams {
     position: number,
   ) => void;
   showEndOfHandReactions: () => void;
+  addDecision: (action: string, correctAction: string) => void;
 }
 
 // Return type for useGameActions
@@ -113,19 +125,18 @@ export interface GameActionsReturn {
 export function useGameActions({
   playerSeat,
   playerHand,
+  dealerHand,
   aiPlayers,
   shoe,
   cardsDealt,
   runningCount,
   shoesDealt,
   gameSettings,
-  currentDealer,
   playerChips,
   selectedTestScenario,
   setPhase,
   setCurrentBet,
   setDealerRevealed,
-  setDealerCallout,
   setPlayerHand,
   setDealerHand,
   setSpeechBubbles,
@@ -145,6 +156,7 @@ export function useGameActions({
   getCardPosition,
   addSpeechBubble,
   showEndOfHandReactions,
+  addDecision,
 }: UseGameActionsParams) {
   const startNewRound = useCallback(() => {
     setPhase("BETTING");
@@ -176,6 +188,16 @@ export function useGameActions({
   const dealInitialCards = useCallback(
     // eslint-disable-next-line sonarjs/cognitive-complexity
     (playerBetAmount?: number) => {
+      // Prevent double dealing (can happen with React Strict Mode or race conditions)
+      if (dealingInProgress) {
+        debugLog(
+          "gamePhases",
+          "⚠️ dealInitialCards called while dealing in progress - skipping",
+        );
+        return;
+      }
+      dealingInProgress = true;
+
       // Use parameter if provided, otherwise fall back to playerHand.bet
       const effectivePlayerBet = playerBetAmount ?? playerHand.bet;
 
@@ -201,6 +223,10 @@ export function useGameActions({
       let currentCardsDealt = cardsDealt;
       let currentRunningCount = runningCount;
       let currentShoesDealt = shoesDealt;
+
+      // Track how many initial reactions have been shown (limit to 1-2)
+      let reactionsShown = 0;
+      const maxReactions = Math.random() < 0.6 ? 1 : 2;
 
       // Helper to deal from the current shoe state OR use forced cards from test scenario
       // Create maps for forced cards by type and index
@@ -268,10 +294,12 @@ export function useGameActions({
       }
 
       // Helper to deal card with optional forced override
+      // skipCount: true for dealer hole card (face down, not counted until revealed)
       const dealFromCurrentShoe = (
         type: "dealer" | "player" | "ai",
         index: number,
         cardIndex: number,
+        skipCount = false,
       ) => {
         let card: GameCard | undefined;
 
@@ -315,47 +343,76 @@ export function useGameActions({
           if (reshuffled) {
             currentShoe = remainingShoe;
             currentCardsDealt = 1;
-            currentRunningCount = card.count;
+            // Only count if not skipping (dealer hole card is face down)
+            currentRunningCount = skipCount ? 0 : card.count;
             currentShoesDealt += 1;
           } else {
             currentShoe = remainingShoe;
             currentCardsDealt += 1;
-            currentRunningCount += card.count;
+            // Only count if not skipping (dealer hole card is face down)
+            if (!skipCount) {
+              currentRunningCount += card.count;
+            }
           }
         } else {
-          // For forced cards, still update counts
+          // For forced cards, still update counts (unless skipping)
           currentCardsDealt += 1;
-          currentRunningCount += card.count;
+          if (!skipCount) {
+            currentRunningCount += card.count;
+          }
         }
 
         return card;
       };
 
-      // Sort AI players by position (first base to third base = ascending, since seat 0=first base)
-      const sortedAIPlayers = [...aiPlayers].sort(
-        (a, b) => a.position - b.position,
-      );
+      // Build a unified dealing order: AI players + human player (if seated with bet), sorted by position
+      type DealTarget =
+        | { type: "ai"; position: number; aiIndex: number }
+        | { type: "player"; position: number };
 
-      debugLog("dealCards", "--- First card round (right to left) ---");
-      // Deal first card to everyone (right to left, dealer last)
-      sortedAIPlayers.forEach((ai) => {
-        const idx = aiPlayers.indexOf(ai);
-        const card = dealFromCurrentShoe("ai", idx, 0);
-        debugLog(
-          "dealCards",
-          `AI Player ${idx} (${ai.character.name}, Seat ${ai.position}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
-        );
-        dealtCards.push({ type: "ai", index: idx, card, cardIndex: 0 });
-      });
-      // Only deal to player if they're seated AND have placed a bet
-      if (playerSeat !== null && effectivePlayerBet > 0) {
-        const card = dealFromCurrentShoe("player", 0, 0);
-        debugLog(
-          "dealCards",
-          `Player (Seat ${playerSeat}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
-        );
-        dealtCards.push({ type: "player", index: 0, card, cardIndex: 0 });
+      const dealOrder: DealTarget[] = aiPlayers.map((ai, idx) => ({
+        type: "ai" as const,
+        position: ai.position,
+        aiIndex: idx,
+      }));
+
+      // Include human player in deal order if seated AND has placed a bet
+      const playerInHand = playerSeat !== null && effectivePlayerBet > 0;
+      if (playerInHand) {
+        dealOrder.push({ type: "player" as const, position: playerSeat });
       }
+
+      // Sort by position (first base = lowest position number deals first)
+      dealOrder.sort((a, b) => a.position - b.position);
+
+      debugLog(
+        "dealCards",
+        "--- First card round (first base to third base) ---",
+      );
+      // Deal first card to everyone in position order, dealer last
+      dealOrder.forEach((target) => {
+        if (target.type === "ai") {
+          const ai = aiPlayers[target.aiIndex];
+          const card = dealFromCurrentShoe("ai", target.aiIndex, 0);
+          debugLog(
+            "dealCards",
+            `AI Player ${target.aiIndex} (${ai.character.name}, Seat ${ai.position}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
+          );
+          dealtCards.push({
+            type: "ai",
+            index: target.aiIndex,
+            card,
+            cardIndex: 0,
+          });
+        } else {
+          const card = dealFromCurrentShoe("player", 0, 0);
+          debugLog(
+            "dealCards",
+            `Player (Seat ${playerSeat}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
+          );
+          dealtCards.push({ type: "player", index: 0, card, cardIndex: 0 });
+        }
+      });
       const dealerCard1 = dealFromCurrentShoe("dealer", 0, 0);
       debugLog(
         "dealCards",
@@ -368,30 +425,39 @@ export function useGameActions({
         cardIndex: 0,
       });
 
-      debugLog("dealCards", "--- Second card round (right to left) ---");
-      // Deal second card to everyone (right to left, dealer last)
-      sortedAIPlayers.forEach((ai) => {
-        const idx = aiPlayers.indexOf(ai);
-        const card = dealFromCurrentShoe("ai", idx, 1);
-        debugLog(
-          "dealCards",
-          `AI Player ${idx} (${ai.character.name}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
-        );
-        dealtCards.push({ type: "ai", index: idx, card, cardIndex: 1 });
-      });
-      // Only deal second card to player if they're seated AND have placed a bet
-      if (playerSeat !== null && effectivePlayerBet > 0) {
-        const card = dealFromCurrentShoe("player", 0, 1);
-        debugLog(
-          "dealCards",
-          `Player: ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
-        );
-        dealtCards.push({ type: "player", index: 0, card, cardIndex: 1 });
-      }
-      const dealerCard2 = dealFromCurrentShoe("dealer", 0, 1);
       debugLog(
         "dealCards",
-        `Dealer card 2: ${dealerCard2.rank}${dealerCard2.suit} (value: ${dealerCard2.value}, count: ${dealerCard2.count}) [FACE DOWN - not counting] | Running count: ${currentRunningCount}`,
+        "--- Second card round (first base to third base) ---",
+      );
+      // Deal second card to everyone in position order, dealer last
+      dealOrder.forEach((target) => {
+        if (target.type === "ai") {
+          const ai = aiPlayers[target.aiIndex];
+          const card = dealFromCurrentShoe("ai", target.aiIndex, 1);
+          debugLog(
+            "dealCards",
+            `AI Player ${target.aiIndex} (${ai.character.name}): ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
+          );
+          dealtCards.push({
+            type: "ai",
+            index: target.aiIndex,
+            card,
+            cardIndex: 1,
+          });
+        } else {
+          const card = dealFromCurrentShoe("player", 0, 1);
+          debugLog(
+            "dealCards",
+            `Player: ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count}) | Running count: ${currentRunningCount}`,
+          );
+          dealtCards.push({ type: "player", index: 0, card, cardIndex: 1 });
+        }
+      });
+      // Dealer hole card - skipCount=true because it's face down (will be counted when revealed)
+      const dealerCard2 = dealFromCurrentShoe("dealer", 0, 1, true);
+      debugLog(
+        "dealCards",
+        `Dealer card 2: ${dealerCard2.rank}${dealerCard2.suit} (value: ${dealerCard2.value}, count: ${dealerCard2.count}) [FACE DOWN - not counted] | Visible running count: ${currentRunningCount}`,
       );
       dealtCards.push({
         type: "dealer",
@@ -400,10 +466,11 @@ export function useGameActions({
         cardIndex: 1,
       });
 
-      // Update state with all pre-dealt cards
+      // Update state with all pre-dealt cards (except running count - that updates as cards land)
       setShoe(currentShoe);
       setCardsDealt(currentCardsDealt);
-      setRunningCount(currentRunningCount);
+      // Note: Running count is now updated incrementally in the animation callbacks below
+      // so it updates in real-time as each card lands (visible to the player)
       setShoesDealt(currentShoesDealt);
 
       // Animate cards one by one
@@ -454,6 +521,14 @@ export function useGameActions({
               prev.filter((fc) => fc.id !== flyingCard.id),
             );
 
+            // Update running count as each card lands (except dealer hole card which is face down)
+            // The hole card will be counted when it's revealed
+            const isDealerHoleCard =
+              dealData.type === "dealer" && dealData.cardIndex === 1;
+            if (!isDealerHoleCard) {
+              setRunningCount((prev) => prev + dealData.card.count);
+            }
+
             if (dealData.type === "dealer") {
               setDealerHand((prev) => ({
                 ...prev,
@@ -489,8 +564,14 @@ export function useGameActions({
               });
 
               // Show initial reaction after AI receives their second card
-              if (dealData.cardIndex === 1) {
+              // Limited to 1-2 reactions with probability-based filtering
+              if (dealData.cardIndex === 1 && reactionsShown < maxReactions) {
                 registerTimeout(() => {
+                  // Check if we've already shown enough reactions
+                  if (reactionsShown >= maxReactions) {
+                    return;
+                  }
+
                   // Safety check: Ensure AI player still exists
                   const ai = aiPlayers[dealData.index];
                   if (!ai) {
@@ -515,6 +596,21 @@ export function useGameActions({
                     const hasBlackjack = isBlackjack(twoCards);
                     const dealerUpCard = dealerCard1;
 
+                    // Determine reaction chance based on hand quality
+                    let reactionChance = 0.02; // Default: only 2% chance to react
+                    if (hasBlackjack) {
+                      reactionChance = 0.2; // 20% chance to react to blackjack
+                    } else if (handValue >= 20) {
+                      reactionChance = 0.08; // 8% chance to react to 20-21
+                    } else if (handValue <= 12) {
+                      reactionChance = 0.05; // 5% chance to react to bad hand
+                    }
+
+                    // Apply probability filter
+                    if (Math.random() > reactionChance) {
+                      return;
+                    }
+
                     const reaction = getInitialHandReaction(
                       ai.character,
                       handValue,
@@ -523,6 +619,7 @@ export function useGameActions({
                     );
 
                     if (reaction) {
+                      reactionsShown += 1;
                       addSpeechBubble(ai.character.id, reaction, ai.position);
                     }
                   }
@@ -532,13 +629,16 @@ export function useGameActions({
           }, CARD_ANIMATION_DURATION);
         }, delay);
 
-        delay += CARD_ANIMATION_DURATION + 200; // Stagger cards with 200ms gap
+        delay += CARD_ANIMATION_DURATION + CARD_DEAL_GAP; // Stagger cards - ensures previous lands before next starts
       });
 
       // After all cards are dealt, check for insurance and dealer blackjack
       registerTimeout(
         () => {
           debugLog("dealCards", "All cards dealt and animations complete");
+
+          // Reset dealing flag now that all cards are dealt
+          dealingInProgress = false;
 
           // Define proceedAfterPeek function before using it
           function proceedAfterPeek() {
@@ -658,6 +758,12 @@ export function useGameActions({
                   "DEALER BLACKJACK! Revealing hole card and moving to RESOLVING",
                 );
                 setDealerRevealed(true);
+                // Count the hole card now that it's revealed
+                setRunningCount((prev) => prev + dealerCard2.count);
+                debugLog(
+                  "dealCards",
+                  `Counting revealed hole card: ${dealerCard2.rank}${dealerCard2.suit} (count: ${dealerCard2.count})`,
+                );
                 addSpeechBubble("dealer", "Blackjack!", -1);
 
                 // Trigger AI player reactions to dealer blackjack
@@ -706,7 +812,6 @@ export function useGameActions({
       playerSeat,
       playerHand,
       getCardPosition,
-      currentDealer,
       selectedTestScenario,
       setShoe,
       setCardsDealt,
@@ -719,13 +824,38 @@ export function useGameActions({
       setAIPlayers,
       setDealerRevealed,
       setPhase,
-      setDealerCallout,
       showEndOfHandReactions,
+      addSpeechBubble,
+      setActivePlayerIndex,
     ],
   );
 
   const hit = useCallback(() => {
     debugLog("playerActions", "=== PLAYER ACTION: HIT ===");
+
+    // Record decision accuracy (only for non-split hands with dealer card visible)
+    if (
+      !playerHand.isSplit &&
+      dealerHand.cards.length > 0 &&
+      playerHand.cards.length === 2
+    ) {
+      const dealerUpCard = dealerHand.cards[0];
+      const canSplitHand =
+        canSplit(playerHand.cards) && playerChips >= playerHand.bet;
+      const canDoubleHand = playerChips >= playerHand.bet;
+      const correctAction = getBasicStrategyAction(
+        playerHand.cards,
+        dealerUpCard,
+        gameSettings,
+        canSplitHand,
+        canDoubleHand,
+      );
+      addDecision("H", correctAction);
+      debugLog(
+        "playerActions",
+        `Decision: HIT, Correct: ${correctAction}, Match: ${correctAction === "H"}`,
+      );
+    }
 
     // Check if we're playing split hands
     if (playerHand.isSplit && playerHand.splitHands) {
@@ -775,12 +905,9 @@ export function useGameActions({
               activeSplitHandIndex: 1,
             }));
           } else {
-            debugLog(
-              "playerActions",
-              "Both hands complete - moving to DEALER_TURN",
-            );
+            debugLog("playerActions", AI_TURNS_TRANSITION_MSG);
             setPlayerFinished(true);
-            setPhase("DEALER_TURN");
+            setPhase("AI_TURNS");
           }
         }, 1000);
       } else {
@@ -860,9 +987,9 @@ export function useGameActions({
               newMap.delete(-1);
               return newMap;
             });
-            // eslint-disable-next-line sonarjs/no-duplicate-string
-            debugLog("playerActions", "Moving to DEALER_TURN phase");
-            setPhase("DEALER_TURN");
+            // Return to AI_TURNS - the hook will check if there are remaining AI players after us
+            debugLog("playerActions", AI_TURNS_TRANSITION_MSG);
+            setPhase("AI_TURNS");
           }, 1500); // Show BUST for 1.5s then muck cards
         } else {
           // Player didn't bust, allow them to take another action
@@ -872,21 +999,52 @@ export function useGameActions({
     }, 500); // 500ms delay before dealing
   }, [
     playerHand,
+    dealerHand,
     dealCardFromShoe,
     getCardPosition,
     runningCount,
     aiPlayers,
     playerSeat,
+    playerChips,
+    gameSettings,
     registerTimeout,
     setFlyingCards,
     setPlayerHand,
     setPlayerActions,
     setPhase,
     setPlayerFinished,
+    addDecision,
   ]);
 
   const stand = useCallback(() => {
     debugLog("playerActions", "=== PLAYER ACTION: STAND ===");
+
+    // Record decision accuracy (only for non-split hands with dealer card visible)
+    if (
+      !playerHand.isSplit &&
+      dealerHand.cards.length > 0 &&
+      playerHand.cards.length >= 2
+    ) {
+      const dealerUpCard = dealerHand.cards[0];
+      const canSplitHand =
+        playerHand.cards.length === 2 &&
+        canSplit(playerHand.cards) &&
+        playerChips >= playerHand.bet;
+      const canDoubleHand =
+        playerHand.cards.length === 2 && playerChips >= playerHand.bet;
+      const correctAction = getBasicStrategyAction(
+        playerHand.cards,
+        dealerUpCard,
+        gameSettings,
+        canSplitHand,
+        canDoubleHand,
+      );
+      addDecision("S", correctAction);
+      debugLog(
+        "playerActions",
+        `Decision: STAND, Correct: ${correctAction}, Match: ${correctAction === "S"}`,
+      );
+    }
 
     // Check if we're playing split hands
     if (playerHand.isSplit && playerHand.splitHands) {
@@ -912,12 +1070,9 @@ export function useGameActions({
         }));
       } else {
         // Both hands complete
-        debugLog(
-          "playerActions",
-          "Both hands complete - moving to DEALER_TURN",
-        );
+        debugLog("playerActions", AI_TURNS_TRANSITION_MSG);
         setPlayerFinished(true);
-        setPhase("DEALER_TURN");
+        setPhase("AI_TURNS");
       }
       return;
     }
@@ -933,12 +1088,42 @@ export function useGameActions({
     debugLog("playerActions", `Final hand: ${playerFinalHandStr}`);
     debugLog("playerActions", "Marking player as finished");
     setPlayerFinished(true);
-    debugLog("playerActions", "Moving to DEALER_TURN phase");
-    setPhase("DEALER_TURN");
-  }, [playerHand, setPhase, setPlayerFinished]);
+    // Return to AI_TURNS - the hook will check if there are remaining AI players after us
+    debugLog("playerActions", AI_TURNS_TRANSITION_MSG);
+    setPhase("AI_TURNS");
+  }, [
+    playerHand,
+    dealerHand,
+    playerChips,
+    gameSettings,
+    setPhase,
+    setPlayerFinished,
+    setPlayerHand,
+    addDecision,
+  ]);
 
   const doubleDown = useCallback(() => {
     debugLog("playerActions", "=== PLAYER ACTION: DOUBLE DOWN ===");
+
+    // Record decision accuracy
+    if (dealerHand.cards.length > 0 && playerHand.cards.length === 2) {
+      const dealerUpCard = dealerHand.cards[0];
+      const canSplitHand =
+        canSplit(playerHand.cards) && playerChips >= playerHand.bet;
+      const correctAction = getBasicStrategyAction(
+        playerHand.cards,
+        dealerUpCard,
+        gameSettings,
+        canSplitHand,
+        true, // canDoubleHand - we're already doubling
+      );
+      addDecision("D", correctAction);
+      debugLog(
+        "playerActions",
+        `Decision: DOUBLE, Correct: ${correctAction}, Match: ${correctAction === "D"}`,
+      );
+    }
+
     debugLog(
       "playerActions",
       `Current hand value: ${calculateHandValue(playerHand.cards)}`,
@@ -954,7 +1139,9 @@ export function useGameActions({
     setPlayerFinished(true);
 
     // Double the bet and deduct from chips
-    setPlayerHand((prev) => ({ ...prev, bet: prev.bet * 2 }));
+    const doubledBet = playerHand.bet * 2;
+    setPlayerHand((prev) => ({ ...prev, bet: doubledBet }));
+    setCurrentBet(doubledBet); // Update visual display
     setPlayerChips((prev) => prev - playerHand.bet);
     setPlayerActions((prev) => new Map(prev).set(-1, "DOUBLE"));
 
@@ -1012,8 +1199,9 @@ export function useGameActions({
               newMap.delete(-1);
               return newMap;
             });
-            debugLog("playerActions", "Moving to DEALER_TURN phase");
-            setPhase("DEALER_TURN");
+            // Return to AI_TURNS - the hook will check if there are remaining AI players after us
+            debugLog("playerActions", AI_TURNS_TRANSITION_MSG);
+            setPhase("AI_TURNS");
           }, 1500);
         } else {
           // Player didn't bust, automatically stand (double down only gets one card)
@@ -1024,13 +1212,17 @@ export function useGameActions({
               newMap.delete(-1);
               return newMap;
             });
-            setPhase("DEALER_TURN");
+            // Return to AI_TURNS - the hook will check if there are remaining AI players after us
+            setPhase("AI_TURNS");
           }, 500);
         }
       }, CARD_ANIMATION_DURATION);
     }, 500);
   }, [
     playerHand,
+    dealerHand,
+    playerChips,
+    gameSettings,
     dealCardFromShoe,
     getCardPosition,
     runningCount,
@@ -1040,13 +1232,37 @@ export function useGameActions({
     setFlyingCards,
     setPlayerHand,
     setPlayerChips,
+    setCurrentBet,
     setPlayerActions,
     setPhase,
     setPlayerFinished,
+    addDecision,
   ]);
 
   const split = useCallback(() => {
     debugLog("playerActions", "=== PLAYER ACTION: SPLIT ===");
+
+    // Record decision accuracy (only for initial splits, not resplits)
+    if (
+      !playerHand.isSplit &&
+      dealerHand.cards.length > 0 &&
+      playerHand.cards.length === 2
+    ) {
+      const dealerUpCard = dealerHand.cards[0];
+      const canDoubleHand = playerChips >= playerHand.bet * 2; // Need chips for split + potential double
+      const correctAction = getBasicStrategyAction(
+        playerHand.cards,
+        dealerUpCard,
+        gameSettings,
+        true, // canSplitHand - we're already splitting
+        canDoubleHand,
+      );
+      addDecision("SP", correctAction);
+      debugLog(
+        "playerActions",
+        `Decision: SPLIT, Correct: ${correctAction}, Match: ${correctAction === "SP"}`,
+      );
+    }
 
     // Check if this is a resplit (already in split mode)
     const isResplit = playerHand.isSplit && playerHand.splitHands;
@@ -1153,7 +1369,7 @@ export function useGameActions({
     }
 
     // Step 2: Deal first card to hand1 after delay
-    const dealToHand1 = registerTimeout(() => {
+    registerTimeout(() => {
       const newCard1 = dealCardFromShoe();
       debugLog(
         "playerActions",
@@ -1172,7 +1388,7 @@ export function useGameActions({
       });
 
       // Step 3: Deal second card to hand2 after another delay
-      const dealToHand2 = registerTimeout(() => {
+      registerTimeout(() => {
         const newCard2 = dealCardFromShoe();
         debugLog(
           "playerActions",
@@ -1182,7 +1398,9 @@ export function useGameActions({
         setPlayerHand((prev) => {
           if (!prev.splitHands) return prev;
           const updatedHands = [...prev.splitHands];
-          const hand2Index = isResplit ? playerHand.activeSplitHandIndex! + 1 : 1;
+          const hand2Index = isResplit
+            ? playerHand.activeSplitHandIndex! + 1
+            : 1;
           updatedHands[hand2Index] = {
             ...updatedHands[hand2Index],
             cards: [...updatedHands[hand2Index].cards, newCard2],
@@ -1204,7 +1422,10 @@ export function useGameActions({
         // Check if first hand is 21
         const hand1Value = calculateHandValue([...hand1.cards, newCard1]);
         if (hand1Value === 21) {
-          debugLog("playerActions", "First hand has 21 - automatically standing");
+          debugLog(
+            "playerActions",
+            "First hand has 21 - automatically standing",
+          );
           setPlayerHand((prev) => {
             const nextIndex = (prev.activeSplitHandIndex || 0) + 1;
             return { ...prev, activeSplitHandIndex: nextIndex };
@@ -1214,19 +1435,39 @@ export function useGameActions({
     }, SPLIT_SEPARATION_DELAY);
   }, [
     playerHand,
+    dealerHand,
     playerChips,
-    gameSettings.maxResplits,
-    gameSettings.resplitAces,
-    gameSettings.hitSplitAces,
+    gameSettings,
     dealCardFromShoe,
     registerTimeout,
     setPlayerHand,
     setPlayerChips,
     setPlayerFinished,
+    addDecision,
   ]);
 
   const surrender = useCallback(() => {
     debugLog("playerActions", "=== PLAYER ACTION: SURRENDER ===");
+
+    // Record decision accuracy
+    if (dealerHand.cards.length > 0 && playerHand.cards.length === 2) {
+      const dealerUpCard = dealerHand.cards[0];
+      const canSplitHand =
+        canSplit(playerHand.cards) && playerChips >= playerHand.bet;
+      const canDoubleHand = playerChips >= playerHand.bet;
+      const correctAction = getBasicStrategyAction(
+        playerHand.cards,
+        dealerUpCard,
+        gameSettings,
+        canSplitHand,
+        canDoubleHand,
+      );
+      addDecision("SU", correctAction);
+      debugLog(
+        "playerActions",
+        `Decision: SURRENDER, Correct: ${correctAction}, Match: ${correctAction === "SU"}`,
+      );
+    }
 
     const handValue = calculateHandValue(playerHand.cards);
     debugLog(
@@ -1257,22 +1498,28 @@ export function useGameActions({
       });
     }
 
-    debugLog("playerActions", "Surrender complete - moving to next phase");
+    debugLog(
+      "playerActions",
+      "Surrender complete - moving to AI_TURNS phase (to check for remaining AI players)",
+    );
 
-    // Move to next phase after brief delay
+    // Return to AI_TURNS - the hook will check if there are remaining AI players after us
     registerTimeout(() => {
       setPhase("AI_TURNS");
     }, 500);
   }, [
     playerHand,
-    playerSeat,
+    dealerHand,
     playerChips,
+    gameSettings,
+    playerSeat,
     setPlayerHand,
     setPlayerChips,
     setPlayerFinished,
     setPlayerActions,
     setPhase,
     registerTimeout,
+    addDecision,
   ]);
 
   return {

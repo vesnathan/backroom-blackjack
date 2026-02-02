@@ -1,31 +1,47 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 export interface LeaderboardEntry {
   rank: number;
   username: string;
+  userId?: string;
   value: number;
   patreonTier?: string;
+  isSeedUser?: boolean;
 }
 
+type CategoryType =
+  | "current-chips"
+  | "peak-chips"
+  | "longest-streak"
+  | "high-score"
+  | "perfect-shoes"
+  | "monthly-high-score";
+
 interface LeaderboardProps {
-  category: "current-chips" | "peak-chips" | "longest-streak" | "high-score";
+  category: CategoryType;
   entries: LeaderboardEntry[];
   currentUserRank?: number;
   currentUserValue?: number;
 }
 
-const CATEGORY_LABELS = {
+const CATEGORY_LABELS: Record<CategoryType, string> = {
   "current-chips": "Total Chips Currently",
   "peak-chips": "Total Chips Reached (Peak)",
   "longest-streak": "Longest Streak",
   "high-score": "High Score",
+  "perfect-shoes": "Perfect Shoes",
+  "monthly-high-score": "Monthly High Score",
 };
 
-const CATEGORY_DESCRIPTIONS = {
+const CATEGORY_DESCRIPTIONS: Record<CategoryType, string> = {
   "current-chips": "Current chip balance",
   "peak-chips": "Highest chip count ever achieved",
   "longest-streak": "Longest consecutive correct decisions",
   "high-score": "Highest score achieved (exponential scoring)",
+  "perfect-shoes": "Shoes completed with 100% optimal decisions",
+  "monthly-high-score": "Highest score this month",
 };
 
 const TIER_COLORS = {
@@ -41,6 +57,14 @@ export default function Leaderboard({
   currentUserRank,
   currentUserValue,
 }: LeaderboardProps) {
+  const router = useRouter();
+
+  const handleUsernameClick = (userId?: string) => {
+    if (userId) {
+      router.push(`/profile?userId=${userId}`);
+    }
+  };
+
   const formatValue = (value: number): string => {
     if (category === "current-chips" || category === "peak-chips") {
       return `${value.toLocaleString()} chips`;
@@ -48,7 +72,10 @@ export default function Leaderboard({
     if (category === "longest-streak") {
       return `${value.toLocaleString()} decisions`;
     }
-    // high-score
+    if (category === "perfect-shoes") {
+      return `${value.toLocaleString()} shoes`;
+    }
+    // high-score or monthly-high-score
     return `${value.toLocaleString()} pts`;
   };
 
@@ -103,8 +130,17 @@ export default function Leaderboard({
         </p>
       </div>
 
-      {/* Leaderboard entries */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      {/* Leaderboard entries - scrollable container */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          maxHeight: "320px",
+          overflowY: "auto",
+          paddingRight: "8px",
+        }}
+      >
         {entries.length === 0 ? (
           <div
             style={{
@@ -121,24 +157,34 @@ export default function Leaderboard({
             <div
               key={entry.rank}
               style={{
-                backgroundColor: "rgba(255, 255, 255, 0.05)",
-                border: "2px solid rgba(255, 255, 255, 0.1)",
+                backgroundColor: entry.isSeedUser
+                  ? "rgba(128, 128, 128, 0.08)"
+                  : "rgba(255, 255, 255, 0.05)",
+                border: entry.isSeedUser
+                  ? "2px solid rgba(128, 128, 128, 0.15)"
+                  : "2px solid rgba(255, 255, 255, 0.1)",
                 borderRadius: "12px",
                 padding: "16px",
                 display: "flex",
                 alignItems: "center",
                 gap: "16px",
                 transition: "all 0.2s ease",
+                opacity: entry.isSeedUser ? 0.6 : 1,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor =
-                  "rgba(74, 144, 226, 0.15)";
-                e.currentTarget.style.borderColor = "#4A90E2";
+                if (!entry.isSeedUser) {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(74, 144, 226, 0.15)";
+                  e.currentTarget.style.borderColor = "#4A90E2";
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor =
-                  "rgba(255, 255, 255, 0.05)";
-                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                e.currentTarget.style.backgroundColor = entry.isSeedUser
+                  ? "rgba(128, 128, 128, 0.08)"
+                  : "rgba(255, 255, 255, 0.05)";
+                e.currentTarget.style.borderColor = entry.isSeedUser
+                  ? "rgba(128, 128, 128, 0.15)"
+                  : "rgba(255, 255, 255, 0.1)";
               }}
             >
               {/* Rank */}
@@ -146,7 +192,7 @@ export default function Leaderboard({
                 style={{
                   fontSize: "20px",
                   fontWeight: "bold",
-                  color: getRankColor(entry.rank),
+                  color: entry.isSeedUser ? "#666" : getRankColor(entry.rank),
                   minWidth: "50px",
                   textAlign: "center",
                 }}
@@ -160,27 +206,55 @@ export default function Leaderboard({
                   style={{
                     fontSize: "16px",
                     fontWeight: "bold",
-                    color: "#FFF",
+                    color: entry.isSeedUser ? "#888" : "#FFF",
                     marginBottom: "4px",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
                   }}
                 >
-                  {entry.username}
+                  <span
+                    onClick={() =>
+                      !entry.isSeedUser && handleUsernameClick(entry.userId)
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" &&
+                      !entry.isSeedUser &&
+                      handleUsernameClick(entry.userId)
+                    }
+                    role="button"
+                    tabIndex={entry.isSeedUser ? -1 : 0}
+                    style={{
+                      cursor:
+                        entry.userId && !entry.isSeedUser
+                          ? "pointer"
+                          : "default",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (entry.userId && !entry.isSeedUser) {
+                        e.currentTarget.style.textDecoration = "underline";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = "none";
+                    }}
+                  >
+                    {entry.username}
+                  </span>
                   {entry.patreonTier && entry.patreonTier !== "NONE" && (
                     <span
                       style={{
                         fontSize: "11px",
                         fontWeight: "bold",
-                        color:
-                          TIER_COLORS[
-                            entry.patreonTier as keyof typeof TIER_COLORS
-                          ] || "#AAA",
+                        color: entry.isSeedUser
+                          ? "#666"
+                          : TIER_COLORS[
+                              entry.patreonTier as keyof typeof TIER_COLORS
+                            ] || "#AAA",
                         backgroundColor: "rgba(0, 0, 0, 0.5)",
                         padding: "2px 8px",
                         borderRadius: "6px",
-                        border: `1px solid ${TIER_COLORS[entry.patreonTier as keyof typeof TIER_COLORS] || "#AAA"}`,
+                        border: `1px solid ${entry.isSeedUser ? "#666" : TIER_COLORS[entry.patreonTier as keyof typeof TIER_COLORS] || "#AAA"}`,
                       }}
                     >
                       {entry.patreonTier}
@@ -194,7 +268,7 @@ export default function Leaderboard({
                 style={{
                   fontSize: "16px",
                   fontWeight: "bold",
-                  color: "#4CAF50",
+                  color: entry.isSeedUser ? "#666" : "#4CAF50",
                   textAlign: "right",
                 }}
               >

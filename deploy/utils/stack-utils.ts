@@ -14,8 +14,8 @@ export function getAppNameForStackType(stackType: StackType): string {
       return "waf";
     case StackType.TheStoryHub:
       return "thestoryhub";
-    case StackType.CardCountingTrainer:
-      return "cardcountingtrainer";
+    case StackType.Backroom_Blackjack:
+      return "backroom-blackjack";
     case StackType.LawnOrder:
       return "lawnorder";
     case StackType.AppBuilderStudio:

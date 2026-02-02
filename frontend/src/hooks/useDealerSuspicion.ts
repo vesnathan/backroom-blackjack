@@ -40,7 +40,7 @@ export function useDealerSuspicion({
       hasReportedRef.current = false;
       lastCommentLevel.current = 0;
     }
-  }, [currentDealer?.id]);
+  }, [currentDealer]);
 
   // Dealer comments based on suspicion level
   useEffect(() => {

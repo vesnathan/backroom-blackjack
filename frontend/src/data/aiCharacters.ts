@@ -224,7 +224,7 @@ export function getAIAvatarPath(character: AICharacter): string {
 
   const filename = nameMap[character.name];
   if (filename) {
-    return `/avatars/${filename}.png`;
+    return `/avatars/${filename}.webp`;
   }
 
   // Fallback: use name with spaces replaced by hyphens and quotes removed

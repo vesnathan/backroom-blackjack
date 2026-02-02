@@ -92,17 +92,23 @@ export function isBusted(cards: Card[]): boolean {
  */
 export function isSoftHand(cards: Card[]): boolean {
   let total = 0;
-  let hasAce = false;
+  let aces = 0;
 
   cards.forEach((card) => {
     total += card.value;
     if (card.rank === "A") {
-      hasAce = true;
+      aces += 1;
     }
   });
 
-  // If total is <= 21 and has an Ace, it's soft
-  return hasAce && total <= 21;
+  // Convert aces from 11 to 1 while busting
+  while (total > 21 && aces > 0) {
+    total -= 10;
+    aces -= 1;
+  }
+
+  // If total is <= 21 and we still have an Ace counted as 11, it's soft
+  return aces > 0 && total <= 21;
 }
 
 /**

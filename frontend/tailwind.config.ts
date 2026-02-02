@@ -6,11 +6,12 @@ const tailwindConfig = {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "../node_modules/@nextui-org/theme/dist/**/*.{js,ts,jsx,tsx}",
   ],
-  screens: {
-    xs: "0px",
-  },
+  darkMode: "class",
   theme: {
     extend: {
+      screens: {
+        xs: "0px",
+      },
       colors: {
         // Card Counting Trainer brand colors (casino theme)
         "casino-green": "#0C5F38", // Casino table green

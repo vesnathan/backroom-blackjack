@@ -1,43 +1,40 @@
 {
-  "name": "@card-counting-trainer/deploy",
+  "name": "@backroom-blackjack/deploy",
   "version": "1.0.0",
-  "description": "Card Counting Trainer Deployment Scripts",
-  "main": "deploy.ts",
-  "license": "MIT",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "deploy": "DOTENV_CONFIG_PATH=../.env ts-node -r dotenv/config deploy.ts",
-    "deploy:dev": "DOTENV_CONFIG_PATH=../.env ts-node -r dotenv/config deploy.ts --stage dev",
-    "deploy:prod": "DOTENV_CONFIG_PATH=../.env ts-node -r dotenv/config deploy.ts --stage prod"
+    "deploy": "tsx deploy.ts",
+    "deploy:dev": "tsx deploy.ts --stage dev",
+    "deploy:prod": "tsx deploy.ts --stage prod"
   },
   "dependencies": {
-    "@aws-sdk/client-appsync": "^3.821.0",
-    "@aws-sdk/client-cloudformation": "^3.300.0",
-    "@aws-sdk/client-cloudfront": "^3.817.0",
+    "@aws-sdk/client-appsync": "^3.669.0",
+    "@aws-sdk/client-cloudformation": "^3.669.0",
+    "@aws-sdk/client-cloudfront": "^3.669.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.817.0",
-    "@aws-sdk/client-cognito-identity-provider": "^3.817.0",
-    "@aws-sdk/client-dynamodb": "^3.817.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.669.0",
+    "@aws-sdk/client-dynamodb": "^3.669.0",
     "@aws-sdk/client-iam": "^3.930.0",
-    "@aws-sdk/client-lambda": "^3.817.0",
-    "@aws-sdk/client-s3": "^3.300.0",
-    "@aws-sdk/lib-dynamodb": "^3.817.0",
-    "@types/archiver": "^6.0.2",
-    "@types/fs-extra": "^11.0.4",
-    "@types/mime-types": "^2.1.4",
+    "@aws-sdk/client-s3": "^3.669.0",
+    "@aws-sdk/client-sts": "^3.669.0",
+    "@aws-sdk/lib-dynamodb": "^3.669.0",
+    "@types/archiver": "^7.0.0",
     "archiver": "^7.0.1",
-    "chalk": "^4.1.2",
+    "chalk": "^5.3.0",
     "commander": "^9.4.0",
-    "dotenv": "^16.5.0",
-    "esbuild": "^0.20.0",
-    "fs-extra": "^11.3.0",
+    "dotenv": "^17.2.3",
+    "esbuild": "^0.27.2",
+    "fs-extra": "^11.2.0",
     "glob": "^11.0.2",
-    "inquirer": "^8.2.4",
-    "mime-types": "^3.0.1"
+    "mime-types": "^2.1.35"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.0",
     "@types/glob": "^8.1.0",
-    "@types/inquirer": "^8.2.4",
-    "@types/node": "^18.11.9",
-    "ts-node": "^10.9.1",
-    "typescript": "^4.9.3"
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^20",
+    "tsx": "^4.20.6",
+    "typescript": "^5.5.4"
   }
 }

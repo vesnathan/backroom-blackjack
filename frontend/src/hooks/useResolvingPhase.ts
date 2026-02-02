@@ -14,8 +14,9 @@ import { DealerCharacter } from "@/data/dealerCharacters";
 import { determineHandResult, calculatePayout } from "@/lib/dealer";
 import { calculateHandValue, isBusted } from "@/lib/gameActions";
 import { calculateDecksRemaining, calculateTrueCount } from "@/lib/deck";
-import { TABLE_POSITIONS } from "@/constants/animations";
+import { TABLE_POSITIONS } from "@/constants/tablePositions";
 import { increaseDealerSuspicion } from "./useDealerSuspicion";
+import { RecordHandData } from "./useHandRecording";
 
 interface UseResolvingPhaseParams {
   phase: GamePhase;
@@ -50,25 +51,9 @@ interface UseResolvingPhaseParams {
     playerId: string,
     message: string,
     position: number,
-    reactionType?:
-      | "bust"
-      | "hit21"
-      | "goodHit"
-      | "badStart"
-      | "win"
-      | "loss"
-      | "dealer_blackjack"
-      | "distraction",
-    priority?: import("@/hooks/useAudioQueue").AudioPriority,
-    dealerVoiceLine?:
-      | "place_bets"
-      | "dealer_busts"
-      | "dealer_has_17"
-      | "dealer_has_18"
-      | "dealer_has_19"
-      | "dealer_has_20"
-      | "dealer_has_21",
+    conversationId?: string,
   ) => void;
+  recordHand: (handData: RecordHandData) => Promise<void>;
 }
 
 /**
@@ -105,6 +90,7 @@ export function useResolvingPhase({
   registerTimeout,
   showEndOfHandReactions,
   addSpeechBubble,
+  recordHand,
 }: UseResolvingPhaseParams) {
   const hasResolvedRef = useRef(false);
 
@@ -179,10 +165,15 @@ export function useResolvingPhase({
         });
       }
 
-      const playerResult = determineHandResult(playerHand, dealerHand);
+      // Check if player already has a result set (e.g., SURRENDER)
+      // If so, use that result instead of determining it again
+      const playerResult =
+        playerHand.result || determineHandResult(playerHand, dealerHand);
       const bjPayoutMultiplier = getBlackjackPayoutMultiplier(
         gameSettings.blackjackPayout,
       );
+
+      // Calculate payout (SURRENDER payout is handled in the action itself)
       const playerPayout = calculatePayout(
         playerHand,
         playerResult,
@@ -191,6 +182,80 @@ export function useResolvingPhase({
 
       setPlayerChips((prev) => prev + playerPayout);
       setPlayerHand((prev) => ({ ...prev, result: playerResult }));
+
+      // Record hand data to backend if player was seated and played this hand
+      if (playerSeat !== null && playerHand.cards.length > 0) {
+        // Calculate context for analytics
+        const decksRemaining = calculateDecksRemaining(
+          gameSettings.numberOfDecks * 52,
+          cardsDealt,
+        );
+        const currentTrueCount = calculateTrueCount(
+          runningCount,
+          decksRemaining,
+        );
+        const profit = playerPayout - playerHand.bet;
+
+        // Format cards as strings (e.g., "AH", "KD")
+        const formatCard = (card: { rank: string; suit: string }) =>
+          `${card.rank}${card.suit[0].toUpperCase()}`;
+
+        // Handle split hands vs regular hands
+        const playerHands: string[][] = [];
+        const playerFinalValues: number[] = [];
+        const results: string[] = [];
+        const bets: number[] = [];
+        const profits: number[] = [];
+
+        if (playerHand.isSplit && playerHand.splitHands) {
+          // Split hands - record each hand separately in arrays
+          playerHand.splitHands.forEach((splitHand) => {
+            playerHands.push(splitHand.cards.map(formatCard));
+            playerFinalValues.push(calculateHandValue(splitHand.cards));
+            const splitResult = determineHandResult(splitHand, dealerHand);
+            results.push(splitResult);
+            bets.push(splitHand.bet);
+            const splitPayout = calculatePayout(
+              splitHand,
+              splitResult,
+              getBlackjackPayoutMultiplier(gameSettings.blackjackPayout),
+            );
+            profits.push(splitPayout - splitHand.bet);
+          });
+        } else {
+          // Single hand
+          playerHands.push(playerHand.cards.map(formatCard));
+          playerFinalValues.push(calculateHandValue(playerHand.cards));
+          results.push(playerResult);
+          bets.push(playerHand.bet);
+          profits.push(profit);
+        }
+
+        // Calculate totals
+        const totalBet = bets.reduce((sum, bet) => sum + bet, 0);
+        const totalProfit = profits.reduce((sum, p) => sum + p, 0);
+
+        // Record complete hand data
+        recordHand({
+          numberOfDecks: gameSettings.numberOfDecks,
+          countingSystem: gameSettings.countingSystem,
+          dealerHitsSoft17: gameSettings.dealerHitsSoft17,
+          blackjackPayout: gameSettings.blackjackPayout,
+          trueCount: currentTrueCount,
+          runningCount,
+          decksRemaining,
+          dealerUpCard: formatCard(dealerHand.cards[0]),
+          dealerFinalCards: dealerHand.cards.map(formatCard),
+          dealerFinalValue: calculateHandValue(dealerHand.cards),
+          playerHands,
+          playerFinalValues,
+          results,
+          bets,
+          profits,
+          totalBet,
+          totalProfit,
+        });
+      }
 
       // Update pit boss distance and suspicion based on player behavior
       if (playerSeat !== null && playerHand.bet > 0) {
@@ -321,7 +386,8 @@ export function useResolvingPhase({
         );
 
         const [x, y] = TABLE_POSITIONS[playerSeat];
-        let result: "win" | "lose" | "push" | "blackjack" = "lose";
+        let result: "win" | "lose" | "push" | "blackjack" | "surrender" =
+          "lose";
 
         if (playerResult === "BLACKJACK") {
           result = "blackjack";
@@ -329,14 +395,20 @@ export function useResolvingPhase({
           result = "win";
         } else if (playerResult === "PUSH") {
           result = "push";
+        } else if (playerResult === "SURRENDER") {
+          result = "surrender";
         } else {
           result = "lose";
         }
+
+        // Calculate profit (payout minus original bet)
+        const playerProfit = playerPayout - playerHand.bet;
 
         newWinLossBubbles.push({
           id: `player-result-${Date.now()}`,
           result,
           position: { left: `${x}%`, top: `${y - 5}%` }, // Slightly above player position
+          amount: playerProfit,
         });
       }
 
@@ -426,5 +498,7 @@ export function useResolvingPhase({
     setDealerCallout,
     setWinLossBubbles,
     setPhase,
+    recordHand,
+    addSpeechBubble,
   ]);
 }

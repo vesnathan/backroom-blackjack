@@ -1,5 +1,10 @@
-import { useEffect } from "react";
-import { GamePhase, AIPlayer } from "@/types/gameState";
+import { useEffect, useRef } from "react";
+import {
+  GamePhase,
+  AIPlayer,
+  ActiveConversation,
+  SpeechBubble,
+} from "@/types/gameState";
 import { GameSettings, calculateCutCardPosition } from "@/types/gameSettings";
 import { AI_CHARACTERS } from "@/data/aiCharacters";
 import { CHARACTER_DIALOGUE, pick } from "@/data/dialogue";
@@ -12,6 +17,10 @@ interface UseRoundEndPhaseParams {
   playerSeat: number | null;
   cardsDealt: number;
   gameSettings: GameSettings;
+  isSubscribed: boolean;
+  showSubscribeBanner: boolean;
+  activeConversation: ActiveConversation | null;
+  speechBubbles: SpeechBubble[];
   registerTimeout: (callback: () => void, delay: number) => void;
   setAIPlayers: (
     players: AIPlayer[] | ((prev: AIPlayer[]) => AIPlayer[]),
@@ -22,6 +31,7 @@ interface UseRoundEndPhaseParams {
   setCardsDealt: (dealt: number) => void;
   setRunningCount: (count: number) => void;
   setShoesDealt: (shoes: number | ((prev: number) => number)) => void;
+  setShowSubscribeBanner: (show: boolean) => void;
   nextHand: () => void;
 }
 
@@ -38,6 +48,10 @@ export function useRoundEndPhase({
   playerSeat,
   cardsDealt,
   gameSettings,
+  isSubscribed,
+  showSubscribeBanner,
+  activeConversation,
+  speechBubbles,
   registerTimeout,
   setAIPlayers,
   setDealerCallout,
@@ -46,19 +60,67 @@ export function useRoundEndPhase({
   setCardsDealt,
   setRunningCount,
   setShoesDealt,
+  setShowSubscribeBanner,
   nextHand,
 }: UseRoundEndPhaseParams) {
+  // Use ref to always get latest playerSeat value in timeout callbacks
+  // This prevents stale closure issues where AI could be placed in player's seat
+  const playerSeatRef = useRef(playerSeat);
+  useEffect(() => {
+    playerSeatRef.current = playerSeat;
+  }, [playerSeat]);
+
+  // Track banner state: "pending" -> "shown" -> "dismissed"
+  const bannerStateRef = useRef<"pending" | "shown" | "dismissed">("pending");
+
+  // Reset banner tracking when phase changes away from ROUND_END
+  useEffect(() => {
+    if (phase !== "ROUND_END") {
+      bannerStateRef.current = "pending";
+    }
+  }, [phase]);
+
+  // Show subscribe banner for non-subscribed users after a short delay
+  useEffect(() => {
+    if (
+      phase === "ROUND_END" &&
+      !isSubscribed &&
+      bannerStateRef.current === "pending"
+    ) {
+      // Show banner after 2 seconds to let user see results first
+      registerTimeout(() => {
+        bannerStateRef.current = "shown";
+        setShowSubscribeBanner(true);
+      }, 2000);
+    }
+  }, [phase, isSubscribed, registerTimeout, setShowSubscribeBanner]);
+
+  // Track when banner is dismissed
+  useEffect(() => {
+    if (bannerStateRef.current === "shown" && !showSubscribeBanner) {
+      bannerStateRef.current = "dismissed";
+    }
+  }, [showSubscribeBanner]);
+
+  // Continue to next hand when banner is dismissed (or immediately for subscribers)
   // eslint-disable-next-line sonarjs/cognitive-complexity
   useEffect(() => {
-    if (phase === "ROUND_END") {
+    // For subscribers: proceed after 4 seconds
+    // For non-subscribers: wait for banner to be dismissed
+    const bannerDismissed = bannerStateRef.current === "dismissed";
+
+    if (phase === "ROUND_END" && (isSubscribed || bannerDismissed)) {
+      const delay = isSubscribed ? 4000 : 500; // Short delay after banner dismiss
       registerTimeout(() => {
-        // Occasionally add or remove players (15% chance per hand)
+        // Frequently add or remove players (35% chance per hand)
         const playerChangeChance = Math.random();
 
-        if (playerChangeChance < 0.15) {
+        if (playerChangeChance < 0.35) {
           const currentAICount = aiPlayers.length;
           const occupiedSeats = new Set(aiPlayers.map((p) => p.position));
-          if (playerSeat !== null) occupiedSeats.add(playerSeat);
+          // Use ref to get latest playerSeat value (avoids stale closure)
+          if (playerSeatRef.current !== null)
+            occupiedSeats.add(playerSeatRef.current);
 
           // 50/50 chance to add or remove (if possible)
           const shouldAdd = Math.random() < 0.5;
@@ -109,19 +171,44 @@ export function useRoundEndPhase({
             }
           } else if (!shouldAdd && currentAICount > 2) {
             // Remove a random player (keep at least 2 AI players for atmosphere)
-            const removeIndex = Math.floor(Math.random() * currentAICount);
-            const removedPlayer = aiPlayers[removeIndex];
+            // But don't remove players who are in a conversation or have visible speech bubbles
 
-            setAIPlayers((prev) =>
-              prev.filter((_, idx) => idx !== removeIndex),
+            // Get IDs of players currently speaking or in active conversation
+            const speakingPlayerIds = speechBubbles
+              .filter((bubble) => bubble.visible)
+              .map((bubble) => bubble.playerId);
+            const playersInConversation = new Set<string>(speakingPlayerIds);
+
+            // Check active conversation (player is being asked a question by an AI)
+            if (activeConversation) {
+              playersInConversation.add(activeConversation.speakerId);
+            }
+
+            // Find eligible players to remove (not in conversation)
+            const eligibleForRemoval = aiPlayers.filter(
+              (ai) => !playersInConversation.has(ai.character.id),
             );
 
-            // Show dealer speech bubble
-            addSpeechBubble(
-              "dealer-leave",
-              `${removedPlayer.character.name} leaves the table.`,
-              -1,
-            );
+            if (eligibleForRemoval.length > 0) {
+              const removeIndex = Math.floor(
+                Math.random() * eligibleForRemoval.length,
+              );
+              const removedPlayer = eligibleForRemoval[removeIndex];
+
+              setAIPlayers((prev) =>
+                prev.filter(
+                  (ai) => ai.character.id !== removedPlayer.character.id,
+                ),
+              );
+
+              // Show dealer speech bubble
+              addSpeechBubble(
+                "dealer-leave",
+                `${removedPlayer.character.name} leaves the table.`,
+                -1,
+              );
+            }
+            // If all players are in conversations, skip removal this round
           }
         }
 
@@ -173,7 +260,7 @@ export function useRoundEndPhase({
           // No reshuffle needed, just continue to next hand
           nextHand();
         }
-      }, 4000); // Show results for 4 seconds before continuing
+      }, delay);
     }
   }, [
     phase,
@@ -181,6 +268,10 @@ export function useRoundEndPhase({
     gameSettings.numberOfDecks,
     gameSettings.deckPenetration,
     gameSettings.countingSystem,
+    isSubscribed,
+    showSubscribeBanner,
+    activeConversation,
+    speechBubbles,
     nextHand,
     registerTimeout,
     aiPlayers,

@@ -1,3 +1,8 @@
+"use client";
+
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { getLayoutConfig } from "@/constants/cardLayout";
+
 type ShoeProps = {
   numDecks: number;
   cardsDealt: number;
@@ -9,17 +14,27 @@ const Shoe = ({
   cardsDealt,
   dealerCutCard,
 }: ShoeProps): JSX.Element => {
+  const isMobile = useIsMobile();
+  const { cardWidth, cardHeight } = getLayoutConfig(isMobile);
+
+  // Shoe dimensions based on card size (shoe is roughly 1.4x card width, 1.5x card height)
+  const shoeWidth = Math.round(cardWidth * 1.43);
+  const shoeHeight = Math.round(cardHeight * 1.53);
+  // Card back dimensions (slightly smaller than actual cards)
+  const cardBackWidth = Math.round(cardWidth * 0.71);
+  const cardBackHeight = Math.round(cardHeight * 0.9);
+
   return (
     <div
       style={{
         position: "absolute",
-        width: "6%",
-        height: "25%",
-        paddingBottom: "6%",
-        right: "7%",
-        top: "20px",
+        width: `${shoeWidth}px`,
+        height: `${shoeHeight}px`,
+        right: isMobile ? "calc(5% + 80px)" : "calc(7% + 200px)",
+        top: isMobile ? "10px" : "20px",
         // eslint-disable-next-line sonarjs/no-duplicate-string
         transform: "rotate(90deg)",
+        zIndex: 10001,
       }}
     >
       <div
@@ -81,8 +96,8 @@ const Shoe = ({
         {/* Card backs showing at the opening - maintaining proper card aspect ratio */}
         <div
           style={{
-            width: "52%",
-            height: "50%",
+            width: `${cardBackWidth}px`,
+            height: `${cardBackHeight}px`,
             backgroundImage: "url(/assets/images/back.webp)",
             backgroundSize: "100% 100%",
             transform: "rotate(90deg)",
@@ -95,7 +110,7 @@ const Shoe = ({
         <div
           style={{
             width: "52%",
-            height: "50%",
+            height: `${cardBackHeight}px`,
             backgroundImage: "url(/assets/images/back.webp)",
             backgroundSize: "100% 100%",
             transform: "rotate(90deg)",

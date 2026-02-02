@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const SCHEMA_DIR = path.join(__dirname, "../schema");
 const OUTPUT_FILE = path.join(__dirname, "../combined_schema.graphql");

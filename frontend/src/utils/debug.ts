@@ -18,6 +18,7 @@ export const DEBUG = {
   audioQueue: true, // Audio queue processing
   speechBubbles: true, // Speech bubble creation
   testScenario: true, // Test scenario forced card dealing
+  badges: true, // Badge/achievement earning
 };
 
 /**

@@ -1,0 +1,14 @@
+# Invite a Friend functionality
+
+extend type Mutation {
+  """
+  Send an email invitation to a friend
+  Rate limited to 5 invites per day per user
+  Requires reCAPTCHA verification
+  """
+  sendInvite(
+    friendName: String!
+    email: String!
+    recaptchaToken: String!
+  ): Boolean @aws_cognito_user_pools
+}

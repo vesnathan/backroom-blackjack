@@ -4,7 +4,9 @@ import { signIn, SignInInput } from "aws-amplify/auth";
 import { useSetGlobalMessage } from "@/components/common/GlobalMessage";
 import { LoginSchema, type LoginInput } from "@/schemas/AuthSchemas";
 
-export const useLoginController = (options: { onLoginSuccess: () => void }) => {
+export const useLoginController = (options: {
+  onLoginSuccess: () => void | Promise<void>;
+}) => {
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -45,7 +47,7 @@ export const useLoginController = (options: { onLoginSuccess: () => void }) => {
             color: "success",
             content: "Successfully logged in!",
           });
-          options.onLoginSuccess();
+          await options.onLoginSuccess();
         }
       } catch (error: unknown) {
         const message =

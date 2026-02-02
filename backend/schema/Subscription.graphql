@@ -1,0 +1,58 @@
+# Subscription management types and operations
+
+extend type Query {
+  # Get available subscription tiers and their prices/benefits
+  getSubscriptionTiers: [TierInfo!]! @aws_cognito_user_pools @aws_iam
+
+  # Get available chip packages for purchase
+  getChipPackages: [ChipPackageInfo!]! @aws_cognito_user_pools @aws_iam
+}
+
+extend type Mutation {
+  # Create a checkout session for subscription purchase
+  createCheckoutSession(input: CreateCheckoutInput!): CheckoutSession!
+    @aws_cognito_user_pools
+
+  # Create a checkout session for one-time chip purchase
+  createChipCheckout(input: CreateChipCheckoutInput!): CheckoutSession!
+    @aws_cognito_user_pools
+}
+
+# Checkout session response
+type CheckoutSession {
+  checkoutUrl: String!
+  sessionId: String
+}
+
+# Input for creating a checkout session
+input CreateCheckoutInput {
+  tier: SubscriptionTier!
+  successUrl: String!
+  cancelUrl: String!
+}
+
+# Input for creating a chip purchase checkout
+input CreateChipCheckoutInput {
+  packageId: String!
+  successUrl: String!
+  cancelUrl: String!
+}
+
+# Information about a subscription tier
+type TierInfo {
+  tier: SubscriptionTier!
+  name: String!
+  priceMonthly: Int!
+  chipPurchaseBonus: Int!
+  monthlyStipend: Int!
+  features: [String!]!
+}
+
+# Information about a chip package
+type ChipPackageInfo {
+  id: String!
+  chips: Int!
+  priceInCents: Int!
+  displayName: String!
+  popular: Boolean
+}

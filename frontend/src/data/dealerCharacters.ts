@@ -106,7 +106,7 @@ export function getDealerAvatarPath(dealer: DealerCharacter): string {
 
   const filename = nameMap[dealer.name];
   if (filename) {
-    return `/avatars/${filename}.png`;
+    return `/avatars/${filename}.webp`;
   }
 
   // Fallback: use name with spaces replaced by hyphens

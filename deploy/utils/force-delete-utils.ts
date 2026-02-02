@@ -303,7 +303,7 @@ export class ForceDeleteManager {
 
   // New public method to delete conventionally named buckets
   public async deleteConventionalBuckets(
-    baseIdentifier: string, // baseIdentifier might be like 'cwl', 'waf', 'cardcountingtrainer'
+    baseIdentifier: string, // baseIdentifier might be like 'cwl', 'waf', 'backroom-blackjack'
     stackType: StackType,
     stage: string,
   ): Promise<void> {

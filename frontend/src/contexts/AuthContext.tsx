@@ -8,7 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { getCurrentUser, fetchAuthSession } from "aws-amplify/auth";
 
 export interface User {
   userId: string;
@@ -27,6 +27,19 @@ export interface AuthStatus {
 
 const AuthContext = createContext<AuthStatus | undefined>(undefined);
 
+// Helper to decode JWT payload without verification (for extracting groups)
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,33 +48,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuthStatus = useCallback(async () => {
     try {
-      const [session, cognitoUser] = await Promise.all([
-        fetchAuthSession(),
-        getCurrentUser().catch(() => null),
-      ]);
+      // First check if user is signed in (doesn't touch Identity Pool)
+      const cognitoUser = await getCurrentUser().catch(() => null);
 
-      const isAuth = session.tokens !== undefined && cognitoUser !== null;
-      setIsAuthenticated(isAuth);
-      setIsLoading(false);
-
-      if (isAuth && cognitoUser && session.tokens) {
-        // Extract groups from access token payload
-        const groups =
-          (session.tokens.accessToken.payload["cognito:groups"] as string[]) ||
-          [];
-        const isAdminUser = groups.includes("admin");
-
-        setUser({
-          userId: cognitoUser.userId,
-          username: cognitoUser.username,
-          groups,
-        });
-        setIsAdmin(isAdminUser);
-      } else {
+      if (!cognitoUser) {
+        setIsAuthenticated(false);
+        setIsLoading(false);
         setUser(undefined);
         setIsAdmin(false);
+        return;
       }
-    } catch {
+
+      // Get user tokens to extract groups (uses User Pool tokens only, no Identity Pool)
+      let groups: string[] = [];
+      try {
+        const session = await fetchAuthSession();
+        if (session.tokens?.accessToken) {
+          groups =
+            (session.tokens.accessToken.payload[
+              "cognito:groups"
+            ] as string[]) || [];
+        }
+      } catch {
+        // Fallback: extract groups from localStorage token if session fetch fails
+        const keys = Object.keys(localStorage);
+        const accessTokenKey = keys.find(
+          (k) =>
+            k.includes("CognitoIdentityServiceProvider") &&
+            k.endsWith(".accessToken"),
+        );
+        if (accessTokenKey) {
+          const accessToken = localStorage.getItem(accessTokenKey);
+          if (accessToken) {
+            const payload = decodeJwtPayload(accessToken);
+            if (payload) {
+              groups = (payload["cognito:groups"] as string[]) || [];
+            }
+          }
+        }
+      }
+
+      const isAdminUser = groups.includes("admin");
+
+      setIsAuthenticated(true);
+      setUser({
+        userId: cognitoUser.userId,
+        username: cognitoUser.username,
+        groups,
+      });
+      setIsAdmin(isAdminUser);
+      setIsLoading(false);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("[AuthContext] checkAuthStatus error:", error);
       setIsAuthenticated(false);
       setIsLoading(false);
       setUser(undefined);

@@ -11,6 +11,8 @@ import {
   _Object,
 } from "@aws-sdk/client-s3";
 import { IAM, PutRolePolicyCommand } from "@aws-sdk/client-iam";
+import { readdir, stat } from "fs/promises";
+import * as path from "path";
 import {
   DeploymentOptions,
   StackType,
@@ -175,7 +177,7 @@ export async function deployShared(options: DeploymentOptions): Promise<void> {
       `Looking for templates in: ${TEMPLATE_RESOURCES_PATHS[StackType.Shared]}`,
     );
     logger.debug(`Current working directory: ${process.cwd()}`);
-    logger.debug(`__dirname resolved to: ${__dirname}`);
+    logger.debug(`import.meta.dirname resolved to: ${import.meta.dirname}`);
 
     const listCommand = new ListObjectsV2Command({
       Bucket: templateBucketName,
@@ -202,9 +204,6 @@ export async function deployShared(options: DeploymentOptions): Promise<void> {
 
     try {
       // Use a simpler approach to find YAML files
-      const { readdir, stat } = require("fs").promises;
-      const path = require("path");
-
       async function findYamlFiles(dir: string): Promise<string[]> {
         const files: string[] = [];
         try {

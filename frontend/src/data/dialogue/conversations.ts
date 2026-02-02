@@ -936,6 +936,666 @@ export const AI_TO_AI_CONVERSATIONS: ConversationTurn[][] = [
       text: "A dysfunctional one, but sure.",
     },
   ],
+
+  // ====== NEW CONVERSATIONS - Priority Personality Pairings ======
+
+  // Drunk Danny mocks Susan's crystals
+  [
+    {
+      characterId: DRUNK_DANNY,
+      text: "*squinting at crystal* Is that a fancy ice cube?",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "That's a rose quartz! It attracts love and positive energy!",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Can it attract the bartender? I need another drink!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "It doesn't work like that! It's about vibrational frequencies!",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "My phone vibrates. Can I use that instead? *hiccup*",
+    },
+  ],
+
+  // Danny challenges Susan's beliefs
+  [
+    {
+      characterId: DRUNK_DANNY,
+      text: "If crystals work, why aren't you rich yet?",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Wealth isn't always measured in money! I'm rich in ENERGY!",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Can you pay your bar tab with energy? Asking for a friend.",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "*sighs* The universe will provide. Unlike some people's attitudes.",
+    },
+  ],
+
+  // Kyle intimidates Nancy
+  [
+    {
+      characterId: COCKY_KYLE,
+      text: "You're betting the minimum? Why even bother showing up?",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "I... I'm just being careful...",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "Careful is code for scared. Fortune favors the bold.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "*whispers* Maybe I should leave...",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Hey, leave her alone! Everyone plays their own way!",
+    },
+  ],
+
+  // Kyle continues being condescending to Nancy
+  [
+    {
+      characterId: NERVOUS_NANCY,
+      text: "I think the count is... um... maybe +3?",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "*snorts* 'Maybe +3'? This isn't a guessing game, sweetheart.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Don't call me sweetheart! And don't say 'count' so loud!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "Relax. The only thing they're watching is your terrible play.",
+    },
+  ],
+
+  // Lucky Larry vs Unlucky Ursula - luck debate
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "I'm telling you, Ursula, luck is a state of mind!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "Easy for you to say. The cards love you.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "Try visualizing a win! Picture the cards you want!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "I visualized a blackjack. Got a 15. The universe hates me.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "Maybe you're visualizing wrong? Try positive affirmations!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "I affirmed I'd break even once. Lost $500.",
+    },
+  ],
+
+  // Larry tries to help Ursula
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "Here, take my lucky penny! It's never failed me!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "*takes it* Watch. This penny will turn unlucky in my hands.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "That's impossible! It's got 40 years of good luck stored up!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "*immediately busts* Told you. The curse is transferable.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "That... that's never happened before. Can I have it back?",
+    },
+  ],
+
+  // Chatty Carlos distracts Clumsy Claire
+  [
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Claire, have you heard about the new restaurant on Main Street?",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "Oh, no! What kind of food do they— *knocks over chips*",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Fusion! Wait, let me help you with those—",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "No, don't! We'll just make it worse! *both reach for chips*",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "*crashes into Claire* Okay, this is chaos. I love it!",
+    },
+  ],
+
+  // Carlos keeps talking while Claire struggles
+  [
+    {
+      characterId: CHATTY_CARLOS,
+      text: "So anyway, I was telling my accountant about diversifying—",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "Uh-huh, that sounds—*reaches for drink, misses*—interesting!",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "—and he said 'Carlos, you're a visionary!' Can you believe that?",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "Totally! *finally grabs drink, spills a little* A visionary!",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Are you okay? You seem distracted. Anyway, about real estate—",
+    },
+  ],
+
+  // Drunk Danny and Cocky Kyle competitive stories
+  [
+    {
+      characterId: DRUNK_DANNY,
+      text: "One time I drank 15 shots and still doubled down correctly!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "That's nothing. I play better when I've had a few whiskeys.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "A FEW? Amateur hour! I'm on my... *counts fingers* ...many-th drink!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "Quality over quantity. I drink single malt, not that swill.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Swill? This swill cost me... wait, I don't remember. But still!",
+    },
+  ],
+
+  // Danny and Kyle keep competing
+  [
+    {
+      characterId: COCKY_KYLE,
+      text: "My biggest win was $50,000 in one night. What's yours, Danny?",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "I won... *hiccup*... a LOT. Numbers are hard right now.",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "So you don't actually remember. How convenient.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "I remember the FEELING! The feeling of VICTORY! *almost falls*",
+    },
+  ],
+
+  // Nervous Nancy and Superstitious Susan - paranoia spiral
+  [
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Susan, do you think bad energy can follow you?",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "ABSOLUTELY! You need to cleanse your aura daily!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "I knew it! That's why the cameras are always on me!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "The cameras? No, that's different. That's surveillance karma!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "SURVEILLANCE KARMA?! Is that even worse?!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Much worse! Quick, touch this amethyst and think pure thoughts!",
+    },
+  ],
+
+  // Nancy and Susan feed each other's anxiety
+  [
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "The pit boss walked by three times. That's a bad omen.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "THREE times?! What does it mean?!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Three means change. Big change. Possibly... being watched!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "*sweating* I KNEW they were watching! I've been too lucky!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Wait, you've been lucky? Oh no, that attracts attention!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Maybe I should start losing on purpose!",
+    },
+  ],
+
+  // ====== BETTING PHASE CONVERSATIONS ======
+
+  // Reactions to big bets
+  [
+    {
+      characterId: COCKY_KYLE,
+      text: "*pushes out massive stack* $2,000 on this hand.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "*gasps* That's more than I make in a week!",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "YEAH! Big money! *tries to match, drops chips* Wait, how much is this?",
+    },
+  ],
+
+  // Betting strategy debate
+  [
+    {
+      characterId: CHATTY_CARLOS,
+      text: "I'm going aggressive this shoe! $500 to start!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "I'm sticking with minimum. Why lose faster?",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "My gut says go big! $1,000 feels right!",
+    },
+  ],
+
+  // Superstitious betting ritual
+  [
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Wait! I need to align my chips with the North Star!",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "We're indoors, Susan. There is no—*knocks over bet*",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "See?! You disrupted the alignment! The energy is off now!",
+    },
+  ],
+
+  // ====== DEALING PHASE CONVERSATIONS ======
+
+  // Card envy
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "*gets blackjack* BOOM! Natural 21!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "*looking at her 14* Of course. Meanwhile, I get this garbage.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "At least you didn't get 16 again. That's my curse.",
+    },
+  ],
+
+  // Complaining about draws
+  [
+    {
+      characterId: DRUNK_DANNY,
+      text: "A FIVE?! I needed a... *squints* ...not a five!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "You had 13 showing. Basic strategy says hit was correct.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Basic strategy can kiss my... *hiccup* ...my cards!",
+    },
+  ],
+
+  // Watching dealer's upcard
+  [
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Dealer's showing 6! The universe is smiling!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "That means they'll bust, right? RIGHT?!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "For everyone else, maybe. Watch me still lose somehow.",
+    },
+  ],
+
+  // ====== POST-HAND CONVERSATIONS ======
+
+  // Analyzing what happened
+  [
+    {
+      characterId: COCKY_KYLE,
+      text: "You should have stood on that 16. Dealer had 5 showing.",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "I panicked! The pressure got to me! *knocks over chips*",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Don't worry, we all make mistakes! That's how we learn!",
+    },
+  ],
+
+  // Celebrating wins
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "That's three blackjacks this shoe! I'm on FIRE!",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Your aura is BLAZING with positive energy!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "It's variance. Don't let it go to your head.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "Jealousy doesn't look good on you, Kyle!",
+    },
+  ],
+
+  // Commiserating losses
+  [
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "That's the fourth bust in a row. New personal record.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Shots! We need shots! Shots fix everything!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Maybe it's a sign we should all take a break?",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "I take breaks. They just make the losses feel worse after.",
+    },
+  ],
+
+  // ====== SIDE CONVERSATIONS (Non-game topics) ======
+
+  // Weather talk
+  [
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Did you see it's going to rain all week?",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Rain is cleansing! It washes away bad karma!",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "I always slip when it rains. Broke my ankle last spring.",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Oh no! Well, good thing we're indoors! Cards are dry!",
+    },
+  ],
+
+  // Sports talk
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "I bet $500 on the game last night. Won big!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "Sports betting is for people who can't count cards.",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "I don't count anything. I just KNOW.",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Can we not talk about betting? It's making me anxious.",
+    },
+  ],
+
+  // Life stories
+  [
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "I used to work at a fancy restaurant. Lasted three days.",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "What happened? I know the owner!",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "I dropped a tray on the mayor. During his anniversary dinner.",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "*laughing* That's amazing! What did he do?!",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "He was surprisingly nice about it. His wife, not so much.",
+    },
+  ],
+
+  // Weekend plans
+  [
+    {
+      characterId: CHATTY_CARLOS,
+      text: "What's everyone doing this weekend?",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "This. *gestures at table* Maybe more drinking.",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Full moon ceremony. Very important for my chakras.",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "High-stakes poker tournament. Invitation only.",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "Recovering from whatever I lose tonight, probably.",
+    },
+  ],
+
+  // ====== MORE PRIORITY PAIRINGS ======
+
+  // Danny + Claire chaos
+  [
+    {
+      characterId: DRUNK_DANNY,
+      text: "Claire! Catch! *throws chip at her*",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "*misses completely* Where did it— *knocks over drink reaching*",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Oops! My bad! *tries to help, spills more*",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "You two are a hazard! Security is definitely watching now!",
+    },
+  ],
+
+  // Kyle + Susan philosophical clash
+  [
+    {
+      characterId: COCKY_KYLE,
+      text: "There's no such thing as luck. Only probability.",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Probability is just the universe's way of organizing energy!",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "That's... not even close to scientifically accurate.",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "Science can't measure everything! Can it measure FEELINGS?",
+    },
+    {
+      characterId: COCKY_KYLE,
+      text: "Actually, neuroscience can measure brain activity that—",
+    },
+    {
+      characterId: SUPERSTITIOUS_SUSAN,
+      text: "LA LA LA! I can't hear your negative energy!",
+    },
+  ],
+
+  // Larry + Carlos optimism overload
+  [
+    {
+      characterId: LUCKY_LARRY,
+      text: "I love this table! Great energy!",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "Me too! Everyone here is AMAZING!",
+    },
+    {
+      characterId: LUCKY_LARRY,
+      text: "We should form a club! The Lucky Winners Club!",
+    },
+    {
+      characterId: CHATTY_CARLOS,
+      text: "YES! I'll make t-shirts! I know a guy!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "Can there be an unlucky members section? Asking for me.",
+    },
+  ],
+
+  // Ursula + Claire bonding over misfortune
+  [
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "Do you ever feel like the universe is conspiring against you?",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "ALL the time! I broke three glasses just walking to the table!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "At least you have an excuse. My hands work fine. Cards don't.",
+    },
+    {
+      characterId: CLUMSY_CLAIRE,
+      text: "Maybe we're cursed together? Misery loves company!",
+    },
+    {
+      characterId: UNLUCKY_URSULA,
+      text: "I'd hug you but I'd probably knock us both over.",
+    },
+  ],
+
+  // Nancy + Danny unlikely allies
+  [
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Danny, how do you stay so... calm? Aren't you worried?",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "Worried about what? *hiccup* Life is short! Cards are fun!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "But the pit boss... the cameras... the—",
+    },
+    {
+      characterId: DRUNK_DANNY,
+      text: "The bartender! That's what I'm focused on! Another round!",
+    },
+    {
+      characterId: NERVOUS_NANCY,
+      text: "Maybe you're onto something. Ignorance is bliss.",
+    },
+  ],
 ];
 
 /**

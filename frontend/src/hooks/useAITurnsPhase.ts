@@ -19,6 +19,7 @@ import {
   getRandomSoftHandSaying,
   getRandomDistraction,
   getDecisionCommentary,
+  getBlackjackReaction,
 } from "@/data/dialogue";
 import { getBasicStrategyAction } from "@/lib/basicStrategy";
 import {
@@ -36,6 +37,7 @@ interface UseAITurnsPhaseParams {
   dealerHand: PlayerHand;
   activePlayerIndex: number | null;
   playersFinished: Set<number>;
+  blackjackCelebratedPlayers: Set<number>;
   playerSeat: number | null;
   playerHand: PlayerHand;
   playerFinished: boolean;
@@ -102,6 +104,7 @@ export function useAITurnsPhase({
   dealerHand,
   activePlayerIndex,
   playersFinished,
+  blackjackCelebratedPlayers,
   playerSeat,
   playerHand,
   playerFinished,
@@ -125,17 +128,21 @@ export function useAITurnsPhase({
 
   // eslint-disable-next-line sonarjs/cognitive-complexity
   useEffect(() => {
-    // Reset playersFinished when entering AI_TURNS phase for the first time
-    if (
+    // Reset playersFinished when entering AI_TURNS from a new hand (not from PLAYER_TURN)
+    // We only reset when coming from phases that indicate a new round of play
+    const shouldResetOnEntry =
       phase === "AI_TURNS" &&
       prevPhaseRef.current !== "AI_TURNS" &&
-      !hasResetRef.current
-    ) {
+      prevPhaseRef.current !== "PLAYER_TURN" && // Don't reset when returning from player's turn
+      !hasResetRef.current;
+
+    if (shouldResetOnEntry) {
       debugLog(
         "aiTurns",
-        "[AI_TURNS] Resetting playersFinished on phase entry",
+        `[AI_TURNS] Resetting playersFinished on phase entry (from ${prevPhaseRef.current}), preserving ${blackjackCelebratedPlayers.size} blackjack players`,
       );
-      setPlayersFinished(new Set());
+      // Preserve blackjack celebrated players - they already showed their reaction during dealing
+      setPlayersFinished(new Set(blackjackCelebratedPlayers));
       setActivePlayerIndex(null);
       hasResetRef.current = true;
       prevPhaseRef.current = phase;
@@ -145,7 +152,10 @@ export function useAITurnsPhase({
     if (phase !== "AI_TURNS") {
       aiTurnProcessingRef.current = false;
       isTransitioningRef.current = false;
-      hasResetRef.current = false;
+      // Only reset hasResetRef when going to a new hand phase, not PLAYER_TURN
+      if (phase !== "PLAYER_TURN") {
+        hasResetRef.current = false;
+      }
       prevPhaseRef.current = phase;
       return;
     }
@@ -275,10 +285,37 @@ export function useAITurnsPhase({
           );
           return true;
         }
+
+        // Natural blackjack - skip turn entirely, just mark as finished
+        if (handValue === 21 && ai.hand.cards.length === 2) {
+          debugLog(
+            "aiTurns",
+            `  ${ai.character.name} (idx:${idx}) - SKIPPED (natural blackjack)`,
+          );
+          // Show blackjack dialogue and action indicator
+          if (!playersFinished.has(idx)) {
+            const bjDialogue = getBlackjackReaction(ai.character.personality);
+            registerTimeout(() => {
+              addSpeechBubble(ai.character.id, bjDialogue, ai.position);
+              setPlayerActions((prev) => new Map(prev).set(idx, "BLACKJACK"));
+            }, 500);
+            registerTimeout(() => {
+              setPlayerActions((prev) => {
+                const newMap = new Map(prev);
+                newMap.delete(idx);
+                return newMap;
+              });
+            }, 2000);
+            setPlayersFinished((prev) => new Set(prev).add(idx));
+          }
+          return false;
+        }
+
+        // Hit to 21 - still needs to "stand"
         if (handValue === 21) {
           debugLog(
             "aiTurns",
-            `  ${ai.character.name} (idx:${idx}) - SELECTED (hand = 21)`,
+            `  ${ai.character.name} (idx:${idx}) - SELECTED (hit to 21)`,
           );
           return true;
         }
@@ -399,13 +436,8 @@ export function useAITurnsPhase({
       const actionDisplay = Math.round(baseActionDisplay / combinedSpeed);
       const turnClear = Math.round(baseTurnClear / combinedSpeed);
 
-      // Check for blackjack - don't highlight player if they have blackjack (automatic stand)
-      const hasBlackjack = ai.hand.cards.length === 2 && handValue === 21;
-
-      // Only set active player if not blackjack
-      if (!hasBlackjack) {
-        setActivePlayerIndex(idx);
-      }
+      // Note: Blackjack players are now skipped in selection, so we always set active
+      setActivePlayerIndex(idx);
 
       const dealerUpCard = dealerHand.cards[0];
 
@@ -491,8 +523,6 @@ export function useAITurnsPhase({
               `decision-commentary-${idx}-${Date.now()}`,
               commentary,
               ai.position,
-              "distraction", // Audio type for commentary
-              0, // LOW priority
             );
           }, decisionTime / 3); // Show 1/3 into decision time
         }
@@ -565,7 +595,7 @@ export function useAITurnsPhase({
           });
 
           // Step 2: Deal first card to hand1 after delay
-          const dealToHand1 = registerTimeout(() => {
+          registerTimeout(() => {
             const newCard1 = dealCardFromShoe();
             debugLog(
               "aiTurns",
@@ -591,7 +621,7 @@ export function useAITurnsPhase({
             });
 
             // Step 3: Deal second card to hand2 after another delay
-            const dealToHand2 = registerTimeout(() => {
+            registerTimeout(() => {
               const newCard2 = dealCardFromShoe();
               debugLog(
                 "aiTurns",
@@ -758,13 +788,7 @@ export function useAITurnsPhase({
 
           if (dialogue) {
             registerTimeout(() => {
-              addSpeechBubble(
-                ai.character.id, // Use actual character ID for audio lookup
-                dialogue!,
-                ai.position,
-                "distraction", // Audio type for banter
-                0, // LOW priority
-              );
+              addSpeechBubble(ai.character.id, dialogue!, ai.position);
             }, decisionTime / 2);
           }
         }
@@ -780,21 +804,26 @@ export function useAITurnsPhase({
             `Dealt card: ${card.rank}${card.suit} (value: ${card.value}, count: ${card.count})`,
           );
 
-          const shoePosition = getCardPositionForAnimation("shoe");
-          const aiPosition = getCardPositionForAnimation(
-            "ai",
-            idx,
-            currentHand.cards.length,
-          );
+          // Skip animation for split hands - cards appear instantly in the split hand container
+          // Regular hands still get the flying card animation
+          let flyingCard: FlyingCardData | null = null;
+          if (!isPlayingSplitHands) {
+            const shoePosition = getCardPositionForAnimation("shoe");
+            const aiPosition = getCardPositionForAnimation(
+              "ai",
+              idx,
+              currentHand.cards.length,
+            );
 
-          const flyingCard: FlyingCardData = {
-            id: `hit-ai-${idx}-${Date.now()}-${(cardCounterRef.current += 1)}`,
-            card,
-            fromPosition: shoePosition,
-            toPosition: aiPosition,
-          };
+            flyingCard = {
+              id: `hit-ai-${idx}-${Date.now()}-${(cardCounterRef.current += 1)}`,
+              card,
+              fromPosition: shoePosition,
+              toPosition: aiPosition,
+            };
 
-          setFlyingCards((prev) => [...prev, flyingCard]);
+            setFlyingCards((prev) => [...prev, flyingCard!]);
+          }
 
           registerTimeout(() => {
             setAIPlayers((prev) => {
@@ -825,9 +854,12 @@ export function useAITurnsPhase({
               }
               return updated;
             });
-            setFlyingCards((prev) =>
-              prev.filter((fc) => fc.id !== flyingCard.id),
-            );
+            // Only clean up flying card if it was created (non-split hands)
+            if (flyingCard) {
+              setFlyingCards((prev) =>
+                prev.filter((fc) => fc.id !== flyingCard.id),
+              );
+            }
 
             const newHandValue = calculateHandValue([
               ...currentHand.cards,
@@ -862,8 +894,6 @@ export function useAITurnsPhase({
                     updatedAI.character.id,
                     bustReaction.message,
                     bustReaction.position,
-                    "bust",
-                    3,
                   );
                 }, 800);
               }
@@ -1059,13 +1089,7 @@ export function useAITurnsPhase({
 
           if (dialogue) {
             registerTimeout(() => {
-              addSpeechBubble(
-                ai.character.id, // Use actual character ID for audio lookup
-                dialogue!,
-                ai.position,
-                "distraction", // Audio type for stand dialogue
-                0, // LOW priority
-              );
+              addSpeechBubble(ai.character.id, dialogue!, ai.position);
             }, decisionTime + 800); // Delay 800ms after stand decision shows
           }
         }

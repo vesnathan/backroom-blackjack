@@ -14,9 +14,6 @@ export function useDebugLogging() {
    * Clear all debug logs and hide the debug panel
    */
   const clearDebugLogs = useCallback(() => {
-    // Clear the logs and console
-    // eslint-disable-next-line no-console
-    console.clear();
     setDebugLogs([]);
     setShowDebugLog(false);
   }, []);

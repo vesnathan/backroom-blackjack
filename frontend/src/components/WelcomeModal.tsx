@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Modal,
   ModalContent,
@@ -8,13 +9,32 @@ import {
   ModalFooter,
   Button,
 } from "@nextui-org/react";
+import Image from "next/image";
 
 interface WelcomeModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+// Hook to check if we're on a small screen
+function useIsSmallScreen(): boolean {
+  const [isSmall, setIsSmall] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      setIsSmall(window.innerHeight < 600 || window.innerWidth < 600);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isSmall;
+}
+
 export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
+  const isSmallScreen = useIsSmallScreen();
+
   const handleStartGame = () => {
     onClose();
   };
@@ -23,59 +43,55 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size="lg"
+      size={isSmallScreen ? "sm" : "lg"}
       isDismissable={false}
       hideCloseButton
+      backdrop="blur"
       classNames={{
-        base: "bg-gray-900 border border-casino-gold/30",
-        header: "border-b border-casino-gold/30",
-        body: "py-6",
-        footer: "border-t border-casino-gold/30",
+        base: isSmallScreen ? "max-h-[95vh] my-2" : "",
+        body: isSmallScreen ? "py-2" : "",
+        header: isSmallScreen ? "py-2" : "",
+        footer: isSmallScreen ? "py-2" : "",
       }}
     >
-      <ModalContent className="bg-gray-900 border border-casino-gold/30">
-        <ModalHeader className="flex flex-col items-center gap-4 text-white pt-6">
-          <img
-            src="/logo.png"
+      <ModalContent>
+        <ModalHeader className="flex flex-col items-center gap-2 text-white pt-4">
+          <Image
+            src="/logo.webp"
             alt="Backroom Blackjack"
-            className="w-40 h-40 mb-2"
+            width={isSmallScreen ? 80 : 160}
+            height={isSmallScreen ? 80 : 160}
+            className={isSmallScreen ? "mb-1" : "mb-2"}
+            priority
           />
-          <h2 className="text-3xl font-bold chip-gold text-center">
+          <h2
+            className={`font-bold chip-gold text-center ${isSmallScreen ? "text-lg" : "text-3xl"}`}
+          >
             Welcome to Backroom Blackjack!
           </h2>
         </ModalHeader>
         <ModalBody className="text-center">
-          <div className="space-y-4">
-            <p className="text-white text-lg leading-relaxed">
-              Master the art of card counting in a realistic casino environment.
-              Practice your skills, manage dealer suspicion, and beat the house!
+          <div className={isSmallScreen ? "space-y-2" : "space-y-4"}>
+            <p
+              className={`text-white leading-relaxed ${isSmallScreen ? "text-sm" : "text-lg"}`}
+            >
+              Master card counting in a realistic casino environment. Beat the
+              house!
             </p>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-casino-gold/20 text-center">
-              <p className="text-gray-300 text-base mb-3">
-                Enjoying the game? Support us on Patreon to help keep
-                development going!
-              </p>
-              <a
-                href="https://www.patreon.com/backrealmblackjack"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-casino-gold hover:text-yellow-300 font-semibold underline inline-block"
-              >
-                Support us on Patreon
-              </a>
-            </div>
-
-            <p className="text-white text-2xl font-bold chip-gold mt-6">
+            <p
+              className={`text-white font-bold chip-gold ${isSmallScreen ? "text-lg mt-2" : "text-2xl mt-6"}`}
+            >
               Have Fun!
             </p>
           </div>
         </ModalBody>
         <ModalFooter className="flex justify-center">
           <Button
-            className="w-full max-w-md bg-casino-gold hover:bg-yellow-600 text-black font-bold text-lg py-6"
+            className={`w-full max-w-md bg-casino-gold hover:bg-yellow-600 text-black font-bold ${isSmallScreen ? "text-sm py-3" : "text-lg py-6"}`}
             onPress={handleStartGame}
-            size="lg"
+            size={isSmallScreen ? "md" : "lg"}
+            style={{ minHeight: "44px" }}
           >
             Start Playing
           </Button>

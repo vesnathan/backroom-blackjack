@@ -19,34 +19,31 @@ export function usePitBossMovement(
         const change = (Math.random() - 0.5) * 20; // -10 to +10
         let newDistance = prev + change;
 
-        // Keep within bounds (10-90 range for more dynamic movement)
-        newDistance = Math.max(10, Math.min(90, newDistance));
+        // Keep within bounds (0-100 range, allowing "gone" state at 75+)
+        newDistance = Math.max(0, Math.min(100, newDistance));
 
         // Suspicion influences pit boss behavior
         if (suspicionLevel >= 70) {
-          // High suspicion: pit boss approaches and stays close
-          if (newDistance < 60) {
-            newDistance += Math.random() * 12; // Pull toward closer
-          } else if (newDistance > 80) {
-            newDistance -= Math.random() * 10; // Don't get too close
+          // High suspicion: pit boss approaches and stays close (distance 0-30)
+          if (newDistance > 30) {
+            newDistance -= Math.random() * 15; // Pull closer
           }
         } else if (suspicionLevel >= 40) {
-          // Medium suspicion: pit boss investigates, stays at medium distance
-          if (newDistance < 40) {
-            newDistance += Math.random() * 8; // Pull toward medium
+          // Medium suspicion: pit boss investigates (distance 30-60)
+          if (newDistance < 30) {
+            newDistance += Math.random() * 10; // Push away a bit
           } else if (newDistance > 60) {
-            newDistance -= Math.random() * 8; // Pull back to medium
+            newDistance -= Math.random() * 10; // Pull back
           }
-        } else if (newDistance < 20) {
-          // Low suspicion: normal patrol behavior - stay farther away
-          // If very close, strongly push away
-          newDistance += Math.random() * 10;
-        } else if (newDistance > 50) {
-          // If far, moderately pull back toward comfortable distance
-          newDistance -= Math.random() * 8;
-        } else if (newDistance > 40) {
-          // If slightly far, gently pull back
-          newDistance -= Math.random() * 4;
+        } else {
+          // Low suspicion: pit boss wanders, often far away or gone (distance 50-100)
+          if (newDistance < 50) {
+            newDistance += Math.random() * 15; // Push away - should be distant
+          }
+          // 20% chance to wander even further toward "gone"
+          if (Math.random() < 0.2) {
+            newDistance += Math.random() * 20;
+          }
         }
 
         return Math.round(newDistance);

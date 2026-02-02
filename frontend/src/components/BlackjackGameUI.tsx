@@ -1,5 +1,4 @@
-import React from "react";
-import SuspicionMeter from "@/components/SuspicionMeter";
+import React, { useState } from "react";
 import StatsBar from "@/components/StatsBar";
 import GameTable from "@/components/GameTable";
 import GameModals from "@/components/GameModals";
@@ -7,11 +6,9 @@ import HeatMapModal from "@/components/HeatMapModal";
 import { useGameState } from "@/contexts/GameStateContext";
 
 export default function BlackjackGameUI() {
-  // Get all state from contexts
-  const gameState = useGameState();
+  const { phase, runningCount } = useGameState();
+  const [devMenuHovered, setDevMenuHovered] = useState(false);
 
-  // Destructure what we need
-  const { phase } = gameState;
   return (
     <div
       style={{
@@ -23,31 +20,61 @@ export default function BlackjackGameUI() {
         overflow: "hidden",
       }}
     >
-      {/* Suspicion Meter - Fixed position */}
-      <SuspicionMeter />
-
       {/* Stats Bar at Top */}
       <StatsBar />
 
-      {/* Phase Indicator (Dev Mode Only) */}
+      {/* Dev Info Menu (Dev Mode Only) - Bottom Left, hover to expand */}
       {process.env.NODE_ENV === "development" && (
         <div
           style={{
             position: "fixed",
-            top: "70px",
+            bottom: "120px",
             left: "20px",
-            backgroundColor: "rgba(0, 0, 0, 0.9)",
-            color: "#00FF00",
-            border: "2px solid #00FF00",
-            borderRadius: "8px",
-            padding: "8px 16px",
-            fontSize: "14px",
-            fontWeight: "bold",
             zIndex: 1001,
-            fontFamily: "monospace",
           }}
+          onMouseEnter={() => setDevMenuHovered(true)}
+          onMouseLeave={() => setDevMenuHovered(false)}
         >
-          PHASE: {phase}
+          {devMenuHovered ? (
+            <div
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.9)",
+                border: "2px solid #00FF00",
+                borderRadius: "8px",
+                padding: "12px 16px",
+                fontFamily: "monospace",
+                fontSize: "13px",
+              }}
+            >
+              <div style={{ color: "#00FF00", fontWeight: "bold" }}>
+                PHASE: {phase}
+              </div>
+              <div
+                style={{
+                  color: "#FFD700",
+                  fontWeight: "bold",
+                  marginTop: "6px",
+                }}
+              >
+                COUNT: {runningCount >= 0 ? `+${runningCount}` : runningCount}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.7)",
+                border: "1px solid #00FF00",
+                borderRadius: "4px",
+                padding: "4px 8px",
+                color: "#00FF00",
+                fontSize: "10px",
+                fontFamily: "monospace",
+                cursor: "pointer",
+              }}
+            >
+              DEV
+            </div>
+          )}
         </div>
       )}
 

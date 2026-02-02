@@ -14,11 +14,11 @@ function getDeploymentOutputs() {
     // Handle both old and new format
     let cctStack;
     if (parsed.stages) {
-      // New format: { stages: { dev: { stacks: { CardCountingTrainer: {...} } } } }
-      cctStack = parsed.stages?.[stage]?.stacks?.CardCountingTrainer;
+      // New format: { stages: { dev: { stacks: { Backroom_Blackjack: {...} } } } }
+      cctStack = parsed.stages?.[stage]?.stacks?.Backroom_Blackjack;
     } else if (parsed.stacks) {
-      // Old format: { stage: "dev", stacks: { CardCountingTrainer: {...} } }
-      cctStack = parsed.stacks.CardCountingTrainer;
+      // Old format: { stage: "dev", stacks: { Backroom_Blackjack: {...} } }
+      cctStack = parsed.stacks.Backroom_Blackjack;
     }
 
     if (!cctStack || !Array.isArray(cctStack.outputs)) return {};
@@ -30,7 +30,7 @@ function getDeploymentOutputs() {
     }));
 
     // Helper: produce prioritized candidate export names for this app
-    const appName = "cardcountingtrainer"; // app identifier matching CloudFormation
+    const appName = "backroom-blackjack"; // app identifier matching CloudFormation
     function paramCandidates(suffix) {
       const base = `${appName}-${stage}-${suffix}`;
       return [base.toLowerCase(), suffix.toLowerCase()];
@@ -98,7 +98,7 @@ function assertRequiredDeploymentEnvs(envs) {
     !isLinting
   ) {
     throw new Error(
-      `Missing required deployment envs for CCT in non-development: ${missing.join(", ")}. Ensure the CardCountingTrainer stack is deployed or set the NEXT_PUBLIC_* env vars.`,
+      `Missing required deployment envs for CCT in non-development: ${missing.join(", ")}. Ensure the Backroom Blackjack stack is deployed or set the NEXT_PUBLIC_* env vars.`,
     );
   }
 }

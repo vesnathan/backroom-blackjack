@@ -21,7 +21,7 @@ export enum REGISTRATION_STEP {
 }
 
 export const useRegistrationController = (options: {
-  onRegistrationSuccess: () => void;
+  onRegistrationSuccess: () => void | Promise<void>;
   captureUnknownError?: (err: Error) => void;
 }) => {
   const [activeStep, setActiveStep] = useState<REGISTRATION_STEP>(
@@ -35,7 +35,9 @@ export const useRegistrationController = (options: {
   const [confirmationDestination, setConfirmationDestination] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [validationErrors, setValidationErrors] = useState<
-    Partial<Record<keyof RegistrationInput | keyof ConfirmationCodeInput, string>>
+    Partial<
+      Record<keyof RegistrationInput | keyof ConfirmationCodeInput, string>
+    >
   >({});
   const setGlobalMessage = useSetGlobalMessage();
 
@@ -134,7 +136,7 @@ export const useRegistrationController = (options: {
           color: "success",
           content: "Account confirmed! Welcome!",
         });
-        options.onRegistrationSuccess();
+        await options.onRegistrationSuccess();
       } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : "Failed to confirm account";

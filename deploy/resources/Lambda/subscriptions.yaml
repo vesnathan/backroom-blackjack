@@ -1,0 +1,375 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Backroom Blackjack Subscription Lambda Functions"
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage (e.g., dev, prod)
+  AppName:
+    Type: String
+    Description: Application short name
+  TableName:
+    Type: String
+    Description: DynamoDB table name
+  TableArn:
+    Type: String
+    Description: DynamoDB table ARN
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket containing Lambda code
+  StripeWebhookCodeKey:
+    Type: String
+    Description: S3 key for Stripe webhook Lambda code
+  CreateCheckoutCodeKey:
+    Type: String
+    Description: S3 key for create checkout Lambda code
+  MonthlyStipendCodeKey:
+    Type: String
+    Description: S3 key for monthly stipend Lambda code
+  EarlyAdopterCheckCodeKey:
+    Type: String
+    Description: S3 key for early adopter check Lambda code
+  CreateChipCheckoutCodeKey:
+    Type: String
+    Description: S3 key for create chip checkout Lambda code
+
+Resources:
+  # ============================================
+  # Secrets Manager
+  # ============================================
+
+  StripeSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AppName}-stripe-secrets-${Stage}"
+      Description: "Stripe API keys and webhook secret for Backroom Blackjack"
+      SecretString: !Sub |
+        {
+          "secretKey": "sk_test_REPLACE_ME",
+          "webhookSecret": "whsec_REPLACE_ME",
+          "priceIdBronze": "price_REPLACE_ME",
+          "priceIdSilver": "price_REPLACE_ME",
+          "priceIdGold": "price_REPLACE_ME",
+          "priceIdPlatinum": "price_REPLACE_ME"
+        }
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  # ============================================
+  # IAM Roles
+  # ============================================
+
+  WebhookLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-webhook-lambda-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !Ref TableArn
+                  - !Sub "${TableArn}/index/*"
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref StripeSecrets
+
+  CheckoutLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-checkout-lambda-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref StripeSecrets
+
+  ScheduledLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-scheduled-lambda-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Scan
+                Resource:
+                  - !Ref TableArn
+                  - !Sub "${TableArn}/index/*"
+
+  # ============================================
+  # Lambda Functions
+  # ============================================
+
+  StripeWebhookFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-stripe-webhook-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt WebhookLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref StripeWebhookCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          STRIPE_SECRETS_ARN: !Ref StripeSecrets
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  CreateCheckoutFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-create-checkout-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref CreateCheckoutCodeKey
+      Environment:
+        Variables:
+          STRIPE_SECRETS_ARN: !Ref StripeSecrets
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  CreateChipCheckoutFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-create-chip-checkout-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref CreateChipCheckoutCodeKey
+      Environment:
+        Variables:
+          STRIPE_SECRETS_ARN: !Ref StripeSecrets
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  MonthlyStipendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-monthly-stipend-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ScheduledLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref MonthlyStipendCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Timeout: 300
+      MemorySize: 512
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  EarlyAdopterCheckFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-early-adopter-check-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ScheduledLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref EarlyAdopterCheckCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Timeout: 300
+      MemorySize: 512
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  # ============================================
+  # API Gateway (HTTP API for webhooks)
+  # ============================================
+
+  PaymentWebhookApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AppName}-payment-webhooks-${Stage}"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - stripe-signature
+      Tags:
+        Stage: !Ref Stage
+
+  PaymentWebhookApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref PaymentWebhookApi
+      StageName: !Ref Stage
+      AutoDeploy: true
+
+  # Stripe Webhook Integration
+  StripeWebhookIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PaymentWebhookApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt StripeWebhookFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  StripeWebhookRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PaymentWebhookApi
+      RouteKey: "POST /webhooks/stripe"
+      Target: !Sub "integrations/${StripeWebhookIntegration}"
+
+  StripeWebhookPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StripeWebhookFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PaymentWebhookApi}/*"
+
+  # ============================================
+  # EventBridge Rules (Scheduled Tasks)
+  # ============================================
+
+  MonthlyStipendRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AppName}-monthly-stipend-${Stage}"
+      Description: "Daily check for monthly chip stipends"
+      ScheduleExpression: "cron(0 0 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Id: MonthlyStipendTarget
+          Arn: !GetAtt MonthlyStipendFunction.Arn
+
+  MonthlyStipendPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MonthlyStipendFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MonthlyStipendRule.Arn
+
+  EarlyAdopterCheckRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AppName}-early-adopter-check-${Stage}"
+      Description: "Daily check for early adopter qualification and chip refills"
+      ScheduleExpression: "cron(0 1 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Id: EarlyAdopterCheckTarget
+          Arn: !GetAtt EarlyAdopterCheckFunction.Arn
+
+  EarlyAdopterCheckPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EarlyAdopterCheckFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EarlyAdopterCheckRule.Arn
+
+Outputs:
+  PaymentWebhookApiUrl:
+    Description: "Base URL for payment webhooks"
+    Value: !Sub "https://${PaymentWebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+    Export:
+      Name: !Sub "${AppName}-PaymentWebhookApiUrl-${Stage}"
+
+  StripeWebhookUrl:
+    Description: "Stripe webhook endpoint URL"
+    Value: !Sub "https://${PaymentWebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/webhooks/stripe"
+    Export:
+      Name: !Sub "${AppName}-StripeWebhookUrl-${Stage}"
+
+  CreateCheckoutFunctionArn:
+    Description: "ARN of the create checkout Lambda function"
+    Value: !GetAtt CreateCheckoutFunction.Arn
+    Export:
+      Name: !Sub "${AppName}-CreateCheckoutFunctionArn-${Stage}"
+
+  CreateChipCheckoutFunctionArn:
+    Description: "ARN of the create chip checkout Lambda function"
+    Value: !GetAtt CreateChipCheckoutFunction.Arn
+    Export:
+      Name: !Sub "${AppName}-CreateChipCheckoutFunctionArn-${Stage}"
+
+  StripeSecretsArn:
+    Description: "ARN of Stripe secrets"
+    Value: !Ref StripeSecrets
+    Export:
+      Name: !Sub "${AppName}-StripeSecretsArn-${Stage}"

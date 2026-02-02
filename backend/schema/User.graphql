@@ -4,22 +4,91 @@ type User {
   username: String!
   chips: Int!
   totalChipsPurchased: Int!
-  patreonInfo: PatreonInfo
+  avatarUrl: String
+  subscriptionInfo: SubscriptionInfo
+  stats: UserStats                    # Aggregated stats (computed from sessions)
+  earnedBadgeIds: [String!]!
   earlyAdopter: Boolean!
+  earlyAdopterQualifiedAt: AWSDateTime
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
 }
 
-type PatreonInfo {
-  tier: PatreonTier!
-  patreonUserId: String
-  lastSynced: AWSDateTime
+# All-time statistics for the user (aggregated from all sessions)
+type UserStats {
+  totalSessions: Int!
+  totalHandsPlayed: Int!
+  totalHandsWon: Int!
+  totalHandsLost: Int!
+  totalPushes: Int!
+  totalBlackjacks: Int!
+  totalShoesPlayed: Int!
+  totalPerfectShoes: Int!
+  peakChips: Int!
+  longestStreak: Int!
+  highScore: Int!
+  totalWagered: Int!
+  totalProfit: Int!
+  lastPlayedAt: AWSDateTime
 }
 
-enum PatreonTier {
+extend type Mutation {
+  saveBadges(badgeIds: [String!]!): User @aws_cognito_user_pools
+  updateChips(chips: Int!): User @aws_cognito_user_pools
+  resetUserData: User @aws_cognito_user_pools
+}
+
+type SubscriptionInfo {
+  tier: SubscriptionTier!
+  status: SubscriptionStatus
+  provider: PaymentProvider
+  subscriptionId: String
+  customerId: String
+  startedAt: AWSDateTime
+  expiresAt: AWSDateTime
+  cancelledAt: AWSDateTime
+  platinumSince: AWSDateTime
+  monthlyStipendGrantedAt: AWSDateTime
+}
+
+enum SubscriptionTier {
   NONE
   BRONZE
   SILVER
   GOLD
   PLATINUM
+}
+
+enum SubscriptionStatus {
+  active
+  cancelled
+  past_due
+  trialing
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+# Public profile visible to other users
+type PublicProfile @aws_cognito_user_pools @aws_iam {
+  userId: ID!
+  username: String!
+  avatarUrl: String
+  subscriptionTier: SubscriptionTier
+  earlyAdopter: Boolean
+  stats: PublicStats
+  createdAt: AWSDateTime
+}
+
+# Limited stats visible on public profiles
+type PublicStats @aws_cognito_user_pools @aws_iam {
+  highScore: Int
+  longestStreak: Int
+  perfectShoes: Int
+  totalHandsPlayed: Int
+}
+
+extend type Query {
+  getPublicProfile(userId: ID!): PublicProfile @aws_cognito_user_pools @aws_iam
 }

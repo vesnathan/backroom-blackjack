@@ -1,11 +1,5 @@
 import { useCallback } from "react";
-import {
-  AIPlayer,
-  ActiveConversation,
-  SpeechBubble,
-  PlayerHand,
-} from "@/types/gameState";
-import { BlackjackPayout } from "@/types/gameSettings";
+import { AIPlayer, SpeechBubble, PlayerHand } from "@/types/gameState";
 import { createSpeechBubble } from "@/utils/conversationHelpers";
 import {
   generateInitialReactions,
@@ -15,28 +9,24 @@ import { debugLog } from "@/utils/debug";
 import { DealerCharacter } from "@/data/dealerCharacters";
 
 interface UseGameInteractionsParams {
-  activeConversation: ActiveConversation | null;
-  setActiveConversation: (conversation: ActiveConversation | null) => void;
   setSpeechBubbles: (
     bubbles: SpeechBubble[] | ((prev: SpeechBubble[]) => SpeechBubble[]),
   ) => void;
   registerTimeout: (callback: () => void, delay: number) => void;
   aiPlayers: AIPlayer[];
   dealerHand: PlayerHand;
-  blackjackPayout: BlackjackPayout;
   currentDealer: DealerCharacter | null;
   devTestingMode?: boolean;
+  blackjackCelebratedPlayers?: Set<number>;
 }
 
 export function useGameInteractions({
-  activeConversation,
-  setActiveConversation,
   setSpeechBubbles,
   registerTimeout,
   aiPlayers,
   dealerHand,
-  blackjackPayout,
   devTestingMode = false,
+  blackjackCelebratedPlayers,
 }: UseGameInteractionsParams) {
   const triggerConversation = useCallback(() => {
     // DISABLED FOR TESTING: All player conversations disabled
@@ -44,13 +34,14 @@ export function useGameInteractions({
     // if (activeConversation) return;
     // const conversation = createConversation(speakerId, speakerName, position);
     // setActiveConversation(conversation);
-  }, [activeConversation, setActiveConversation]);
+  }, []);
 
   const addSpeechBubble = useCallback(
     (
       playerId: string,
       message: string,
       position: number,
+      conversationId?: string,
       // eslint-disable-next-line sonarjs/cognitive-complexity
     ) => {
       // Skip speech bubbles in dev testing mode
@@ -93,6 +84,7 @@ export function useGameInteractions({
                   hideTimeoutId: undefined,
                   isDealer: bubbleData.isDealer,
                   playerPosition: bubbleData.playerPosition,
+                  conversationId,
                 }
               : b,
           );
@@ -107,6 +99,7 @@ export function useGameInteractions({
             visible: false, // Start invisible
             isDealer: bubbleData.isDealer,
             playerPosition: bubbleData.playerPosition,
+            conversationId,
           },
         ];
       });
@@ -119,6 +112,9 @@ export function useGameInteractions({
       );
 
       // Schedule hide after 5 seconds
+      // Note: Don't release conversation color here - multi-turn conversations
+      // reuse the same conversationId, and releasing early causes color changes.
+      // Colors are cleared at the start of each new hand via clearAllConversationColors().
       registerTimeout(() => {
         setSpeechBubbles((bubbles) =>
           bubbles.map((b) =>
@@ -157,7 +153,7 @@ export function useGameInteractions({
     const selectedReactions = generateEndOfHandReactions(
       aiPlayers,
       dealerHand,
-      blackjackPayout,
+      blackjackCelebratedPlayers,
     );
 
     selectedReactions.forEach((reaction, idx) => {
@@ -172,7 +168,7 @@ export function useGameInteractions({
   }, [
     aiPlayers,
     dealerHand,
-    blackjackPayout,
+    blackjackCelebratedPlayers,
     registerTimeout,
     addSpeechBubble,
   ]);

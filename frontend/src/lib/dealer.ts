@@ -180,7 +180,8 @@ export function calculatePayout(
 
     case "LOSE":
     case "BUST":
-      return 0; // Lose bet
+    case "SURRENDER":
+      return 0; // Lose bet (surrender refund is handled in the action)
 
     default:
       return 0;
@@ -285,6 +286,8 @@ export function getHandResultDescription(result: HandResult): string {
       return "Push";
     case "BUST":
       return "Bust";
+    case "SURRENDER":
+      return "Surrender";
     default:
       return "";
   }
@@ -304,6 +307,7 @@ export function getHandResultColor(result: HandResult): string {
     case "BUST":
       return "text-red-500";
     case "PUSH":
+    case "SURRENDER":
       return "text-yellow-500";
     default:
       return "text-white";

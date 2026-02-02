@@ -1,0 +1,64 @@
+enum LeaderboardCategory {
+  CURRENT_CHIPS
+  PEAK_CHIPS
+  LONGEST_STREAK
+  HIGH_SCORE
+  PERFECT_SHOES
+  MONTHLY_HIGH_SCORE
+}
+
+enum LeaderboardTimePeriod {
+  ALL_TIME
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+enum CountingSystem {
+  HI_LO
+  HI_OPT_I
+  HI_OPT_II
+  KO
+  OMEGA_II
+  ZEN
+}
+
+input LeaderboardFilters {
+  timePeriod: LeaderboardTimePeriod
+  countingSystem: CountingSystem
+  numberOfDecks: Int
+}
+
+type LeaderboardEntry @aws_cognito_user_pools @aws_iam {
+  rank: Int!
+  username: String!
+  userId: ID!
+  value: Int!
+  subscriptionTier: SubscriptionTier
+  isSeedUser: Boolean
+}
+
+type LeaderboardResult @aws_cognito_user_pools @aws_iam {
+  category: LeaderboardCategory!
+  entries: [LeaderboardEntry!]!
+  userRank: Int
+  userValue: Int
+  timePeriod: LeaderboardTimePeriod
+  filters: AppliedFilters
+}
+
+type AppliedFilters @aws_cognito_user_pools @aws_iam {
+  timePeriod: LeaderboardTimePeriod
+  countingSystem: CountingSystem
+  numberOfDecks: Int
+}
+
+extend type Query {
+  getLeaderboard(
+    category: LeaderboardCategory!
+    limit: Int
+    filters: LeaderboardFilters
+  ): LeaderboardResult!
+    @aws_cognito_user_pools
+    @aws_iam
+}

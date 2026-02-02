@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Card Counting Trainer S3 Resources"
+Description: "Backroom Blackjack S3 Resources"
 
 Parameters:
   Stage:
@@ -14,8 +14,8 @@ Resources:
   # S3 Bucket for frontend static files (served via CloudFront)
   FrontendBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       BucketName: !Sub "${AppName}-frontend-${Stage}"
       PublicAccessBlockConfiguration:
@@ -27,10 +27,48 @@ Resources:
   # S3 Bucket for user-uploaded files
   CCTBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       BucketName: !Sub "${AppName}-userfiles-${Stage}"
+
+  # S3 Bucket for user avatar images (public read access)
+  AvatarBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${AppName}-avatars-${Stage}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - GET
+              - HEAD
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+
+  # Bucket policy to allow public read access to avatars
+  AvatarBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AvatarBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${AvatarBucket.Arn}/*"
 
 Outputs:
   FrontendBucketName:
@@ -58,3 +96,15 @@ Outputs:
   CCTBucketRegionalDomainName:
     Description: Regional domain name of the user files S3 bucket
     Value: !GetAtt CCTBucket.RegionalDomainName
+
+  AvatarBucketName:
+    Description: Name of the avatar bucket
+    Value: !Ref AvatarBucket
+
+  AvatarBucketArn:
+    Description: ARN of the avatar S3 bucket
+    Value: !GetAtt AvatarBucket.Arn
+
+  AvatarBucketRegionalDomainName:
+    Description: Regional domain name of the avatar S3 bucket
+    Value: !GetAtt AvatarBucket.RegionalDomainName

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import PokerChip, { CHIP_COLORS } from "./PokerChip";
 
 interface BettingInterfaceProps {
   playerChips: number;
@@ -11,15 +12,26 @@ interface BettingInterfaceProps {
 }
 
 const CHIP_VALUES = [5, 10, 25, 50, 100, 500];
+const CURSOR_POINTER = "pointer";
+const CURSOR_NOT_ALLOWED = "not-allowed";
+const TRANSITION_EASE = "all 0.2s ease";
 
-const CHIP_COLORS: Record<number, string> = {
-  5: "#EF4444", // Red
-  10: "#3B82F6", // Blue
-  25: "#10B981", // Green
-  50: "#F59E0B", // Orange/Gold
-  100: "#000000", // Black
-  500: "#9B59B6", // Purple
-};
+// Hook to check if we're on a small screen (mobile landscape)
+function useIsSmallScreen(): boolean {
+  const [isSmall, setIsSmall] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      // Small screen: height < 500px (phone in landscape) or width < 700px
+      setIsSmall(window.innerHeight < 500 || window.innerWidth < 700);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isSmall;
+}
 
 export default function BettingInterface({
   playerChips,
@@ -31,6 +43,15 @@ export default function BettingInterface({
   onClearBet,
 }: BettingInterfaceProps) {
   const [selectedChipValue, setSelectedChipValue] = useState<number>(minBet);
+  const isSmallScreen = useIsSmallScreen();
+
+  // Responsive sizes
+  const chipSize = isSmallScreen ? 50 : 70;
+  const containerPadding = isSmallScreen ? "16px" : "32px";
+  const titleFontSize = isSmallScreen ? "20px" : "28px";
+  const betFontSize = isSmallScreen ? "24px" : "32px";
+  const chipGap = isSmallScreen ? "8px" : "12px";
+  const buttonPadding = isSmallScreen ? "12px 20px" : "10px 24px";
 
   const handleChipClick = (value: number) => {
     setSelectedChipValue(value);
@@ -57,23 +78,24 @@ export default function BettingInterface({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: "16px",
+        gap: isSmallScreen ? "10px" : "16px",
         backgroundColor: "rgba(0, 0, 0, 0.95)",
-        padding: "32px",
+        padding: containerPadding,
         borderRadius: "16px",
         border: "3px solid #FFD700",
         boxShadow: "0 8px 32px rgba(0, 0, 0, 0.8)",
         zIndex: 10000,
-        minWidth: "400px",
+        maxWidth: "95vw",
+        width: isSmallScreen ? "auto" : "400px",
       }}
     >
       {/* Title */}
       <h2
         style={{
-          fontSize: "28px",
+          fontSize: titleFontSize,
           fontWeight: "bold",
           color: "#FFD700",
-          marginBottom: "8px",
+          marginBottom: isSmallScreen ? "4px" : "8px",
           textAlign: "center",
         }}
       >
@@ -82,13 +104,31 @@ export default function BettingInterface({
 
       {/* Current Bet Display */}
       <div style={{ textAlign: "center" }}>
-        <div style={{ color: "#FFF", fontSize: "18px", marginBottom: "8px" }}>
+        <div
+          style={{
+            color: "#FFF",
+            fontSize: isSmallScreen ? "14px" : "18px",
+            marginBottom: "4px",
+          }}
+        >
           Current Bet
         </div>
-        <div style={{ color: "#FFD700", fontSize: "32px", fontWeight: "bold" }}>
+        <div
+          style={{
+            color: "#FFD700",
+            fontSize: betFontSize,
+            fontWeight: "bold",
+          }}
+        >
           ${currentBet}
         </div>
-        <div style={{ color: "#888", fontSize: "12px", marginTop: "8px" }}>
+        <div
+          style={{
+            color: "#888",
+            fontSize: isSmallScreen ? "10px" : "12px",
+            marginTop: "4px",
+          }}
+        >
           Min: ${minBet} | Max: ${maxBet}
         </div>
       </div>
@@ -97,16 +137,16 @@ export default function BettingInterface({
       <div
         style={{
           display: "flex",
-          gap: "12px",
+          gap: chipGap,
           alignItems: "center",
           justifyContent: "center",
+          flexWrap: "wrap",
         }}
       >
-        {/* eslint-disable-next-line sonarjs/no-duplicate-string */}
-        {/* eslint-disable sonarjs/cognitive-complexity */}
         {CHIP_VALUES.map((value) => {
           const isAffordable = canAddChip(value);
           const isSelected = selectedChipValue === value;
+          const chipColor = isAffordable ? CHIP_COLORS[value] : "#333";
 
           return (
             <button
@@ -115,93 +155,42 @@ export default function BettingInterface({
               onClick={() => isAffordable && handleChipClick(value)}
               disabled={!isAffordable}
               style={{
-                position: "relative",
-                width: "70px",
-                height: "70px",
-                borderRadius: "50%",
-                border: isSelected ? "3px solid #FFD700" : "3px solid #333",
-                backgroundColor: isAffordable ? CHIP_COLORS[value] : "#333",
-                // eslint-disable-next-line sonarjs/no-duplicate-string
-                cursor: isAffordable ? "pointer" : "not-allowed",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: isAffordable ? CURSOR_POINTER : CURSOR_NOT_ALLOWED,
                 opacity: isAffordable ? 1 : 0.4,
-                // eslint-disable-next-line sonarjs/no-duplicate-string
-                transition: "all 0.2s ease",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "column",
-                boxShadow: isSelected
-                  ? "0 0 20px rgba(255, 215, 0, 0.6)"
-                  : "0 4px 8px rgba(0, 0, 0, 0.4)",
-                transform: isSelected ? "scale(1.1)" : "scale(1)",
+                transition: TRANSITION_EASE,
+                transform: isSelected ? "scale(1.15)" : "scale(1)",
+                filter: isSelected
+                  ? "drop-shadow(0 0 10px rgba(255, 215, 0, 0.8))"
+                  : "none",
               }}
               onMouseEnter={(e) => {
                 if (isAffordable) {
-                  e.currentTarget.style.transform = "scale(1.15)";
-                  e.currentTarget.style.boxShadow =
-                    "0 0 20px rgba(255, 215, 0, 0.4)";
+                  e.currentTarget.style.transform = "scale(1.2)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (isAffordable) {
                   e.currentTarget.style.transform = isSelected
-                    ? "scale(1.1)"
+                    ? "scale(1.15)"
                     : "scale(1)";
-                  e.currentTarget.style.boxShadow = isSelected
-                    ? "0 0 20px rgba(255, 215, 0, 0.6)"
-                    : "0 4px 8px rgba(0, 0, 0, 0.4)";
                 }
               }}
             >
-              {/* White ring decoration */}
-              <div
-                style={{
-                  position: "absolute",
-                  width: "54px",
-                  height: "54px",
-                  borderRadius: "50%",
-                  border: "2px solid white",
-                  pointerEvents: "none",
-                }}
-              />
-
-              {/* Inner colored circle */}
-              <div
-                style={{
-                  position: "absolute",
-                  width: "46px",
-                  height: "46px",
-                  borderRadius: "50%",
-                  backgroundColor: isAffordable ? CHIP_COLORS[value] : "#333",
-                  pointerEvents: "none",
-                }}
-              />
-
-              {/* Chip value */}
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  color: value === 100 ? "#FFD700" : "#FFF",
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                  textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
-                }}
-              >
-                ${value}
-              </div>
+              <PokerChip size={chipSize} color={chipColor} value={value} />
             </button>
           );
         })}
-        {/* eslint-enable sonarjs/cognitive-complexity */}
       </div>
 
       {/* Action Buttons */}
       <div
         style={{
           display: "flex",
-          gap: "12px",
-          marginTop: "8px",
+          gap: chipGap,
+          marginTop: isSmallScreen ? "4px" : "8px",
         }}
       >
         <button
@@ -209,7 +198,8 @@ export default function BettingInterface({
           onClick={onClearBet}
           disabled={currentBet === 0}
           style={{
-            padding: "10px 24px",
+            padding: buttonPadding,
+            minHeight: "44px", // Touch-friendly minimum
             borderRadius: "8px",
             border: "2px solid #EF4444",
             backgroundColor:
@@ -219,8 +209,8 @@ export default function BettingInterface({
             color: currentBet > 0 ? "#EF4444" : "#666",
             fontSize: "14px",
             fontWeight: "bold",
-            cursor: currentBet > 0 ? "pointer" : "not-allowed",
-            transition: "all 0.2s ease",
+            cursor: currentBet > 0 ? CURSOR_POINTER : CURSOR_NOT_ALLOWED,
+            transition: TRANSITION_EASE,
           }}
           onMouseEnter={(e) => {
             if (currentBet > 0) {
@@ -241,7 +231,8 @@ export default function BettingInterface({
           onClick={onConfirmBet}
           disabled={!canPlaceBet}
           style={{
-            padding: "10px 32px",
+            padding: isSmallScreen ? "12px 24px" : "10px 32px",
+            minHeight: "44px", // Touch-friendly minimum
             borderRadius: "8px",
             border: "2px solid #10B981",
             backgroundColor: canPlaceBet
@@ -250,8 +241,8 @@ export default function BettingInterface({
             color: canPlaceBet ? "#10B981" : "#666",
             fontSize: "14px",
             fontWeight: "bold",
-            cursor: canPlaceBet ? "pointer" : "not-allowed",
-            transition: "all 0.2s ease",
+            cursor: canPlaceBet ? CURSOR_POINTER : CURSOR_NOT_ALLOWED,
+            transition: TRANSITION_EASE,
           }}
           onMouseEnter={(e) => {
             if (canPlaceBet) {

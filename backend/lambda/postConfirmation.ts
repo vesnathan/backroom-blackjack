@@ -26,7 +26,7 @@ export const handler = async (
 
   const userId = userAttributes.sub;
   const email = userAttributes.email || "";
-  const username = userName; // This could be email or a custom username
+  const username = userAttributes.preferred_username || userName; // Use display name if set, otherwise fall back to userName
 
   try {
     // Create user record in DynamoDB
@@ -37,8 +37,13 @@ export const handler = async (
         SK: { S: `USER#${userId}` },
         email: { S: email },
         username: { S: username },
-        chips: { N: "10000" }, // Starting chips
+        chips: { N: "1000" }, // Starting chips
         totalChipsPurchased: { N: "0" },
+        subscriptionInfo: {
+          M: {
+            tier: { S: "NONE" },
+          },
+        },
         earlyAdopter: { BOOL: false },
         createdAt: { S: new Date().toISOString() },
         updatedAt: { S: new Date().toISOString() },

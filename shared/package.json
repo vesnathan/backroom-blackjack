@@ -1,7 +1,7 @@
 {
-  "name": "cctbackend",
+  "name": "@backroom-blackjack/shared",
   "version": "1.0.0",
   "private": true,
-  "main": "src/types/gqlTypes.ts",
-  "types": "src/types/gqlTypes.ts"
+  "main": "src/index.ts",
+  "types": "src/index.ts"
 }

@@ -1,18 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   GameSettings,
   CountingSystem,
   BlackjackPayout,
 } from "@/types/gameSettings";
+import {
+  SubscriptionTier,
+  getGameRestrictions,
+  getMinTierForCountingSystem,
+  getMinTierForDeckCount,
+  SUBSCRIPTION_TIER_NAMES,
+} from "@backroom-blackjack/shared";
+
+// Hook to check if we're on mobile
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(window.innerHeight < 500 || window.innerWidth < 900);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isMobile;
+}
 
 interface GameSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentSettings: GameSettings;
   onSave: (settings: Partial<GameSettings>) => void;
+  userTier?: SubscriptionTier;
 }
+
+// Color constants for locked/disabled items
+const LOCKED_BG_LIGHT = "rgba(100, 100, 100, 0.1)";
+const LOCKED_BG = "rgba(100, 100, 100, 0.2)";
+const LOCKED_BORDER = "rgba(100, 100, 100, 0.3)";
+const BORDER_LIGHT = "rgba(255, 255, 255, 0.2)";
+
+// Lock icon for restricted features
+const LockIcon = ({ tier }: { tier: SubscriptionTier }) => (
+  <span
+    title={`Requires ${SUBSCRIPTION_TIER_NAMES[tier]} tier`}
+    style={{
+      marginLeft: "8px",
+      fontSize: "12px",
+      opacity: 0.7,
+    }}
+  >
+    🔒 {SUBSCRIPTION_TIER_NAMES[tier]}
+  </span>
+);
 
 const COUNTING_SYSTEMS = {
   HI_LO: {
@@ -47,10 +92,30 @@ export default function GameSettingsModal({
   onClose,
   currentSettings,
   onSave,
+  userTier = SubscriptionTier.None,
 }: GameSettingsModalProps) {
   const [settings, setSettings] = useState<GameSettings>(currentSettings);
+  const router = useRouter();
+  const isMobile = useIsMobile();
+
+  // Get restrictions for user's tier
+  const restrictions = getGameRestrictions(userTier);
 
   if (!isOpen) return null;
+
+  // Responsive sizes
+  const padding = isMobile ? "16px" : "32px";
+  const headerFontSize = isMobile ? "20px" : "28px";
+  const sectionFontSize = isMobile ? "14px" : "18px";
+  const bodyFontSize = isMobile ? "12px" : "14px";
+  const smallFontSize = isMobile ? "10px" : "12px";
+  const buttonPadding = isMobile ? "6px 10px" : "8px 16px";
+  const sectionMargin = isMobile ? "16px" : "24px";
+
+  const handleUpgradeClick = () => {
+    onClose();
+    router.push("/subscribe");
+  };
 
   const handleSave = () => {
     // Only save the settings that the modal manages
@@ -60,6 +125,7 @@ export default function GameSettingsModal({
       dealerHitsSoft17: settings.dealerHitsSoft17,
       blackjackPayout: settings.blackjackPayout,
       countingSystem: settings.countingSystem,
+      lateSurrenderAllowed: settings.lateSurrenderAllowed,
     });
     onClose();
   };
@@ -163,18 +229,18 @@ export default function GameSettingsModal({
           left: "50%",
           transform: "translate(-50%, -50%)",
           zIndex: 9999,
-          maxHeight: "90vh",
+          maxHeight: isMobile ? "95vh" : "90vh",
           overflowY: "auto",
           width: "90%",
-          maxWidth: "700px",
+          maxWidth: isMobile ? "500px" : "700px",
         }}
       >
         <div
           style={{
             backgroundColor: "#0F1419",
-            border: "3px solid #4A90E2",
-            borderRadius: "20px",
-            padding: "32px",
+            border: isMobile ? "2px solid #4A90E2" : "3px solid #4A90E2",
+            borderRadius: isMobile ? "12px" : "20px",
+            padding,
             boxShadow: "0 16px 48px rgba(0, 0, 0, 0.9)",
           }}
         >
@@ -185,11 +251,17 @@ export default function GameSettingsModal({
               // eslint-disable-next-line sonarjs/no-duplicate-string
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "24px",
+              marginBottom: sectionMargin,
             }}
           >
-            <h2 style={{ fontSize: "28px", fontWeight: "bold", color: "#FFF" }}>
-              ⚙️ Game Settings
+            <h2
+              style={{
+                fontSize: headerFontSize,
+                fontWeight: "bold",
+                color: "#FFF",
+              }}
+            >
+              {isMobile ? "⚙️ Settings" : "⚙️ Game Settings"}
             </h2>
             <button
               type="button"
@@ -199,8 +271,8 @@ export default function GameSettingsModal({
                 color: "#FFF",
                 border: "2px solid rgba(255, 255, 255, 0.3)",
                 borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "16px",
+                padding: buttonPadding,
+                fontSize: bodyFontSize,
                 cursor: "pointer",
                 // eslint-disable-next-line sonarjs/no-duplicate-string
                 transition: "all 0.2s ease",
@@ -218,7 +290,7 @@ export default function GameSettingsModal({
                 e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
               }}
             >
-              ✕ Close
+              ✕ {isMobile ? "" : "Close"}
             </button>
           </div>
 
@@ -230,20 +302,24 @@ export default function GameSettingsModal({
                   ? "rgba(244, 67, 54, 0.2)"
                   : "rgba(76, 175, 80, 0.2)",
               border: `2px solid ${houseEdge > 1 ? "#F44336" : "#4CAF50"}`,
-              borderRadius: "12px",
-              padding: "16px",
-              marginBottom: "24px",
+              borderRadius: isMobile ? "8px" : "12px",
+              padding: isMobile ? "10px" : "16px",
+              marginBottom: sectionMargin,
               textAlign: "center",
             }}
           >
             <div
-              style={{ fontSize: "14px", color: "#AAA", marginBottom: "4px" }}
+              style={{
+                fontSize: smallFontSize,
+                color: "#AAA",
+                marginBottom: "4px",
+              }}
             >
               Estimated House Edge
             </div>
             <div
               style={{
-                fontSize: "32px",
+                fontSize: isMobile ? "24px" : "32px",
                 fontWeight: "bold",
                 color: houseEdge > 1 ? "#F44336" : "#4CAF50",
               }}
@@ -253,36 +329,62 @@ export default function GameSettingsModal({
             {houseEdge > 1 && (
               <div
                 style={{
-                  fontSize: "12px",
+                  fontSize: smallFontSize,
                   color: "#F44336",
                   marginTop: "4px",
                   fontStyle: "italic",
                 }}
               >
-                Warning: Unfavorable rules! Avoid in real play.
+                Warning: Unfavorable rules!
               </div>
             )}
           </div>
 
           {/* Quick Presets */}
-          <div style={{ marginBottom: "32px" }}>
+          <div style={{ marginBottom: sectionMargin }}>
             <h3
               style={{
-                fontSize: "18px",
+                fontSize: sectionFontSize,
                 fontWeight: "bold",
                 color: "#FFF",
-                marginBottom: "12px",
+                marginBottom: isMobile ? "8px" : "12px",
               }}
             >
               Quick Presets
             </h3>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: isMobile ? "4px" : "8px",
+                flexWrap: "wrap",
+              }}
+            >
               {[
-                { id: "vegas", label: "Vegas Strip", icon: "🎰" },
-                { id: "single", label: "Single Deck", icon: "🃏" },
-                { id: "double", label: "Double Deck", icon: "🎴" },
-                { id: "european", label: "European", icon: "🇪🇺" },
-                { id: "bad", label: "Bad Rules", icon: "⚠️" },
+                {
+                  id: "vegas",
+                  label: isMobile ? "Vegas" : "Vegas Strip",
+                  icon: "🎰",
+                },
+                {
+                  id: "single",
+                  label: isMobile ? "1 Deck" : "Single Deck",
+                  icon: "🃏",
+                },
+                {
+                  id: "double",
+                  label: isMobile ? "2 Deck" : "Double Deck",
+                  icon: "🎴",
+                },
+                {
+                  id: "european",
+                  label: isMobile ? "Euro" : "European",
+                  icon: "🇪🇺",
+                },
+                {
+                  id: "bad",
+                  label: isMobile ? "Bad" : "Bad Rules",
+                  icon: "⚠️",
+                },
               ].map((preset) => (
                 <button
                   type="button"
@@ -300,10 +402,12 @@ export default function GameSettingsModal({
                   style={{
                     backgroundColor: "rgba(74, 144, 226, 0.2)",
                     color: "#FFF",
-                    border: "2px solid #4A90E2",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "14px",
+                    border: isMobile
+                      ? "1px solid #4A90E2"
+                      : "2px solid #4A90E2",
+                    borderRadius: isMobile ? "6px" : "8px",
+                    padding: isMobile ? "6px 8px" : "8px 16px",
+                    fontSize: smallFontSize,
                     cursor: "pointer",
                     transition: "all 0.2s ease",
                   }}
@@ -323,13 +427,13 @@ export default function GameSettingsModal({
           </div>
 
           {/* Deck Configuration */}
-          <div style={{ marginBottom: "24px" }}>
+          <div style={{ marginBottom: sectionMargin }}>
             <h3
               style={{
-                fontSize: "18px",
+                fontSize: sectionFontSize,
                 fontWeight: "bold",
                 color: "#FFF",
-                marginBottom: "12px",
+                marginBottom: isMobile ? "8px" : "12px",
               }}
             >
               🃏 Deck Configuration
@@ -337,52 +441,82 @@ export default function GameSettingsModal({
 
             {/* Number of Decks */}
             <fieldset
-              style={{ marginBottom: "16px", border: "none", padding: 0 }}
+              style={{
+                marginBottom: isMobile ? "12px" : "16px",
+                border: "none",
+                padding: 0,
+              }}
             >
               <legend
                 style={{
-                  fontSize: "14px",
+                  fontSize: smallFontSize,
                   color: "#AAA",
                   display: "block",
-                  marginBottom: "8px",
+                  marginBottom: isMobile ? "6px" : "8px",
                 }}
               >
                 Number of Decks
               </legend>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {([1, 2, 4, 6, 8] as const).map((num) => (
-                  <button
-                    type="button"
-                    key={num}
-                    onClick={() =>
-                      setSettings({ ...settings, numberOfDecks: num })
-                    }
-                    style={{
-                      backgroundColor:
-                        settings.numberOfDecks === num
-                          ? "#4A90E2"
-                          : "rgba(255, 255, 255, 0.1)",
-                      color: settings.numberOfDecks === num ? "#FFF" : "#AAA",
-                      border: "2px solid",
-                      borderColor:
-                        settings.numberOfDecks === num
-                          ? // eslint-disable-next-line sonarjs/no-duplicate-string
-                            "#FFF"
-                          : // eslint-disable-next-line sonarjs/no-duplicate-string
-                            "rgba(255, 255, 255, 0.2)",
-                      borderRadius: "8px",
-                      padding: "10px 20px",
-                      fontSize: "14px",
-                      fontWeight:
-                        settings.numberOfDecks === num ? "bold" : "normal",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      flex: 1,
-                    }}
-                  >
-                    {num}
-                  </button>
-                ))}
+              <div style={{ display: "flex", gap: isMobile ? "4px" : "8px" }}>
+                {([1, 2, 4, 6, 8] as const).map((num) => {
+                  const isAvailable = restrictions.deckCounts.includes(num);
+                  const minTier = getMinTierForDeckCount(num);
+                  return (
+                    <button
+                      type="button"
+                      key={num}
+                      onClick={() => {
+                        if (isAvailable) {
+                          setSettings({ ...settings, numberOfDecks: num });
+                        } else {
+                          handleUpgradeClick();
+                        }
+                      }}
+                      style={{
+                        backgroundColor:
+                          settings.numberOfDecks === num
+                            ? "#4A90E2"
+                            : !isAvailable
+                              ? LOCKED_BG
+                              : "rgba(255, 255, 255, 0.1)",
+                        color:
+                          settings.numberOfDecks === num
+                            ? "#FFF"
+                            : !isAvailable
+                              ? "#666"
+                              : "#AAA",
+                        border: isMobile ? "1px solid" : "2px solid",
+                        borderColor:
+                          settings.numberOfDecks === num
+                            ? "#FFF"
+                            : !isAvailable
+                              ? LOCKED_BORDER
+                              : BORDER_LIGHT,
+                        borderRadius: isMobile ? "6px" : "8px",
+                        padding: isMobile ? "8px 10px" : "10px 16px",
+                        fontSize: smallFontSize,
+                        fontWeight:
+                          settings.numberOfDecks === num ? "bold" : "normal",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        flex: 1,
+                        opacity: isAvailable ? 1 : 0.7,
+                      }}
+                    >
+                      {num}
+                      {!isAvailable && (
+                        <div
+                          style={{
+                            fontSize: isMobile ? "8px" : "10px",
+                            marginTop: "2px",
+                          }}
+                        >
+                          🔒 {SUBSCRIPTION_TIER_NAMES[minTier]}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </fieldset>
 
@@ -398,14 +532,26 @@ export default function GameSettingsModal({
                 }}
               >
                 Deck Penetration: {settings.deckPenetration}%
+                <span
+                  style={{ fontSize: "11px", color: "#666", marginLeft: "8px" }}
+                >
+                  (Range: {restrictions.penetrationRange.min}% -{" "}
+                  {restrictions.penetrationRange.max}%)
+                </span>
               </label>
               <input
                 id="deck-penetration"
                 type="range"
-                min="40"
-                max="90"
+                min={restrictions.penetrationRange.min}
+                max={restrictions.penetrationRange.max}
                 step="5"
-                value={settings.deckPenetration}
+                value={Math.min(
+                  Math.max(
+                    settings.deckPenetration,
+                    restrictions.penetrationRange.min,
+                  ),
+                  restrictions.penetrationRange.max,
+                )}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
@@ -426,21 +572,38 @@ export default function GameSettingsModal({
                   marginTop: "4px",
                 }}
               >
-                <span>40% (Poor)</span>
+                <span>{restrictions.penetrationRange.min}% (Min)</span>
                 <span>75% (Good)</span>
-                <span>90% (Excellent)</span>
+                <span>{restrictions.penetrationRange.max}% (Max)</span>
               </div>
+              {(restrictions.penetrationRange.min > 30 ||
+                restrictions.penetrationRange.max < 95) && (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#9B59B6",
+                    marginTop: "8px",
+                    cursor: "pointer",
+                  }}
+                  onClick={handleUpgradeClick}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpgradeClick()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  🔒 Upgrade to unlock full penetration range (30%-95%)
+                </div>
+              )}
             </div>
           </div>
 
           {/* Dealer Rules */}
-          <div style={{ marginBottom: "24px" }}>
+          <div style={{ marginBottom: sectionMargin }}>
             <h3
               style={{
-                fontSize: "18px",
+                fontSize: sectionFontSize,
                 fontWeight: "bold",
                 color: "#FFF",
-                marginBottom: "12px",
+                marginBottom: isMobile ? "8px" : "12px",
               }}
             >
               👔 Dealer Rules
@@ -453,9 +616,11 @@ export default function GameSettingsModal({
                 // eslint-disable-next-line sonarjs/no-duplicate-string
                 backgroundColor: "rgba(255, 255, 255, 0.05)",
                 // eslint-disable-next-line sonarjs/no-duplicate-string
-                border: "2px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "12px",
-                padding: "16px",
+                border: isMobile
+                  ? "1px solid rgba(255, 255, 255, 0.1)"
+                  : "2px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: isMobile ? "8px" : "12px",
+                padding: isMobile ? "10px" : "16px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -464,7 +629,7 @@ export default function GameSettingsModal({
               <div>
                 <div
                   style={{
-                    fontSize: "14px",
+                    fontSize: smallFontSize,
                     fontWeight: "bold",
                     color: "#FFF",
                   }}
@@ -472,11 +637,15 @@ export default function GameSettingsModal({
                   Dealer Action on Soft 17
                 </div>
                 <div
-                  style={{ fontSize: "12px", color: "#AAA", marginTop: "4px" }}
+                  style={{
+                    fontSize: isMobile ? "10px" : "12px",
+                    color: "#AAA",
+                    marginTop: "4px",
+                  }}
                 >
                   {settings.dealerHitsSoft17
-                    ? "Dealer Hits (H17) - House Favored"
-                    : "Dealer Stands (S17) - Player Favored"}
+                    ? "H17 - House Favored"
+                    : "S17 - Player Favored"}
                 </div>
               </div>
               <button
@@ -493,9 +662,9 @@ export default function GameSettingsModal({
                     : "#4CAF50",
                   color: "#FFF",
                   border: "none",
-                  borderRadius: "8px",
-                  padding: "10px 20px",
-                  fontSize: "14px",
+                  borderRadius: isMobile ? "6px" : "8px",
+                  padding: isMobile ? "8px 14px" : "10px 20px",
+                  fontSize: smallFontSize,
                   fontWeight: "bold",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
@@ -506,14 +675,89 @@ export default function GameSettingsModal({
             </div>
           </div>
 
-          {/* Payout Rules */}
-          <div style={{ marginBottom: "24px" }}>
+          {/* Player Options */}
+          <div style={{ marginBottom: sectionMargin }}>
             <h3
               style={{
-                fontSize: "18px",
+                fontSize: sectionFontSize,
                 fontWeight: "bold",
                 color: "#FFF",
-                marginBottom: "12px",
+                marginBottom: isMobile ? "8px" : "12px",
+              }}
+            >
+              🎯 Player Options
+            </h3>
+
+            <div
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.05)",
+                border: isMobile
+                  ? "1px solid rgba(255, 255, 255, 0.1)"
+                  : "2px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: isMobile ? "8px" : "12px",
+                padding: isMobile ? "10px" : "16px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: smallFontSize,
+                    fontWeight: "bold",
+                    color: "#FFF",
+                  }}
+                >
+                  Late Surrender
+                </div>
+                <div
+                  style={{
+                    fontSize: isMobile ? "10px" : "12px",
+                    color: "#AAA",
+                    marginTop: "4px",
+                  }}
+                >
+                  {settings.lateSurrenderAllowed
+                    ? "Enabled - 50% back"
+                    : "Disabled"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setSettings({
+                    ...settings,
+                    lateSurrenderAllowed: !settings.lateSurrenderAllowed,
+                  })
+                }
+                style={{
+                  backgroundColor: settings.lateSurrenderAllowed
+                    ? "#4CAF50"
+                    : "#666",
+                  color: "#FFF",
+                  border: "none",
+                  borderRadius: isMobile ? "6px" : "8px",
+                  padding: isMobile ? "8px 14px" : "10px 20px",
+                  fontSize: smallFontSize,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                {settings.lateSurrenderAllowed ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
+
+          {/* Payout Rules */}
+          <div style={{ marginBottom: sectionMargin }}>
+            <h3
+              style={{
+                fontSize: sectionFontSize,
+                fontWeight: "bold",
+                color: "#FFF",
+                marginBottom: isMobile ? "8px" : "12px",
               }}
             >
               💰 Payout Rules
@@ -573,7 +817,7 @@ export default function GameSettingsModal({
                       borderColor:
                         settings.blackjackPayout === value
                           ? "#FFF"
-                          : "rgba(255, 255, 255, 0.2)",
+                          : BORDER_LIGHT,
                       borderRadius: "8px",
                       padding: "10px",
                       fontSize: "14px",
@@ -591,13 +835,13 @@ export default function GameSettingsModal({
           </div>
 
           {/* Counting System */}
-          <div style={{ marginBottom: "24px" }}>
+          <div style={{ marginBottom: sectionMargin }}>
             <h3
               style={{
-                fontSize: "18px",
+                fontSize: sectionFontSize,
                 fontWeight: "bold",
                 color: "#FFF",
-                marginBottom: "12px",
+                marginBottom: isMobile ? "8px" : "12px",
               }}
             >
               🧮 Counting System
@@ -610,80 +854,98 @@ export default function GameSettingsModal({
                 Object.keys(COUNTING_SYSTEMS) as Array<
                   keyof typeof COUNTING_SYSTEMS
                 >
-              ).map((system) => (
-                <button
-                  type="button"
-                  key={system}
-                  onClick={() =>
-                    setSettings({
-                      ...settings,
-                      countingSystem: CountingSystem[system],
-                    })
-                  }
-                  style={{
-                    backgroundColor:
-                      settings.countingSystem === system
-                        ? "rgba(74, 144, 226, 0.3)"
-                        : "rgba(255, 255, 255, 0.05)",
-                    color: "#FFF",
-                    border: "2px solid",
-                    borderColor:
-                      settings.countingSystem === system
-                        ? "#4A90E2"
-                        : "rgba(255, 255, 255, 0.1)",
-                    borderRadius: "12px",
-                    padding: "12px",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (settings.countingSystem !== system) {
-                      e.currentTarget.style.backgroundColor =
-                        "rgba(255, 255, 255, 0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (settings.countingSystem !== system) {
-                      e.currentTarget.style.backgroundColor =
-                        "rgba(255, 255, 255, 0.05)";
-                    }
-                  }}
-                >
-                  <div
+              ).map((system) => {
+                const isAvailable =
+                  restrictions.countingSystems.includes(system);
+                const minTier = getMinTierForCountingSystem(system);
+                return (
+                  <button
+                    type="button"
+                    key={system}
+                    onClick={() => {
+                      if (isAvailable) {
+                        setSettings({
+                          ...settings,
+                          countingSystem: CountingSystem[system],
+                        });
+                      } else {
+                        handleUpgradeClick();
+                      }
+                    }}
                     style={{
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      marginBottom: "4px",
+                      backgroundColor:
+                        settings.countingSystem === system
+                          ? "rgba(74, 144, 226, 0.3)"
+                          : !isAvailable
+                            ? LOCKED_BG_LIGHT
+                            : "rgba(255, 255, 255, 0.05)",
+                      color: isAvailable ? "#FFF" : "#888",
+                      border: "2px solid",
+                      borderColor:
+                        settings.countingSystem === system
+                          ? "#4A90E2"
+                          : !isAvailable
+                            ? LOCKED_BORDER
+                            : "rgba(255, 255, 255, 0.1)",
+                      borderRadius: "12px",
+                      padding: "12px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      opacity: isAvailable ? 1 : 0.7,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (settings.countingSystem !== system && isAvailable) {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.1)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (settings.countingSystem !== system && isAvailable) {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.05)";
+                      }
                     }}
                   >
-                    {COUNTING_SYSTEMS[system].name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#AAA",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    {COUNTING_SYSTEMS[system].description}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "#666",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {COUNTING_SYSTEMS[system].values}
-                  </div>
-                </button>
-              ))}
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                        marginBottom: "4px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span>{COUNTING_SYSTEMS[system].name}</span>
+                      {!isAvailable && <LockIcon tier={minTier} />}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: isAvailable ? "#AAA" : "#666",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {COUNTING_SYSTEMS[system].description}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#666",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {COUNTING_SYSTEMS[system].values}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ display: "flex", gap: isMobile ? "8px" : "12px" }}>
             <button
               type="button"
               onClick={handleSave}
@@ -692,9 +954,9 @@ export default function GameSettingsModal({
                 backgroundColor: "#4CAF50",
                 color: "#FFF",
                 border: "none",
-                borderRadius: "12px",
-                padding: "14px",
-                fontSize: "16px",
+                borderRadius: isMobile ? "8px" : "12px",
+                padding: isMobile ? "10px" : "14px",
+                fontSize: bodyFontSize,
                 fontWeight: "bold",
                 cursor: "pointer",
                 transition: "all 0.2s ease",
@@ -706,7 +968,7 @@ export default function GameSettingsModal({
                 e.currentTarget.style.backgroundColor = "#4CAF50";
               }}
             >
-              💾 Save Settings
+              💾 Save
             </button>
             <button
               type="button"
@@ -715,17 +977,18 @@ export default function GameSettingsModal({
                 flex: 1,
                 backgroundColor: "rgba(255, 255, 255, 0.1)",
                 color: "#FFF",
-                border: "2px solid rgba(255, 255, 255, 0.3)",
-                borderRadius: "12px",
-                padding: "14px",
-                fontSize: "16px",
+                border: isMobile
+                  ? "1px solid rgba(255, 255, 255, 0.3)"
+                  : "2px solid rgba(255, 255, 255, 0.3)",
+                borderRadius: isMobile ? "8px" : "12px",
+                padding: isMobile ? "10px" : "14px",
+                fontSize: bodyFontSize,
                 fontWeight: "bold",
                 cursor: "pointer",
                 transition: "all 0.2s ease",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor =
-                  "rgba(255, 255, 255, 0.2)";
+                e.currentTarget.style.backgroundColor = BORDER_LIGHT;
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor =

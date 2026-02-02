@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Backroom Blackjack SendInvite Lambda for Friend Invitations"
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Deployment stage (e.g., dev, prod)
+  AppName:
+    Type: String
+    Description: Application short name
+  TableName:
+    Type: String
+    Description: DynamoDB table name
+  TableArn:
+    Type: String
+    Description: DynamoDB table ARN
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket containing Lambda code
+  LambdaCodeKey:
+    Type: String
+    Description: S3 key for Lambda code zip file
+  FrontendUrl:
+    Type: String
+    Description: Frontend URL for referral links
+    Default: "https://backroom-blackjack.com"
+
+Resources:
+  # Secrets Manager for reCAPTCHA
+  RecaptchaSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AppName}-recaptcha-secrets-${Stage}"
+      Description: "reCAPTCHA v3 secret key for Backroom Blackjack"
+      SecretString: !Sub |
+        {
+          "secretKey": "REPLACE_WITH_RECAPTCHA_SECRET_KEY"
+        }
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  SendInviteFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-sendinvite-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !Ref TableArn
+                  - !Sub "${TableArn}/index/*"
+        - PolicyName: SESAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    ses:FromAddress: "noreply@backroom-blackjack.com"
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref RecaptchaSecrets
+
+  SendInviteFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-sendinvite-${Stage}"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt SendInviteFunctionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          FROM_EMAIL: "noreply@backroom-blackjack.com"
+          RECAPTCHA_SECRETS_ARN: !Ref RecaptchaSecrets
+          FRONTEND_URL: !Ref FrontendUrl
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Stack
+          Value: !Sub "${AppName}-${Stage}"
+
+  # Grant AppSync permission to invoke the Lambda function
+  SendInviteLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SendInviteFunction
+      Action: lambda:InvokeFunction
+      Principal: appsync.amazonaws.com
+      SourceArn: !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*"
+
+Outputs:
+  SendInviteFunctionArn:
+    Description: ARN of the SendInvite Lambda function
+    Value: !GetAtt SendInviteFunction.Arn
+    Export:
+      Name: !Sub "${AppName}-SendInviteFunctionArn-${Stage}"
+
+  SendInviteFunctionName:
+    Description: Name of the SendInvite Lambda function
+    Value: !Ref SendInviteFunction
+
+  RecaptchaSecretsArn:
+    Description: ARN of reCAPTCHA secrets
+    Value: !Ref RecaptchaSecrets
+    Export:
+      Name: !Sub "${AppName}-RecaptchaSecretsArn-${Stage}"

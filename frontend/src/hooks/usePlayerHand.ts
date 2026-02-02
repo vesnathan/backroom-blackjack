@@ -1,6 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { PlayerHand } from "@/types/gameState";
+import { HandResult } from "@/types/game";
 import { calculateStreakPoints } from "@/utils/scoreCalculation";
+
+/**
+ * Session statistics tracking
+ */
+export interface SessionStats {
+  handsPlayed: number;
+  handsWon: number;
+  handsLost: number;
+  pushes: number;
+  blackjacks: number;
+  startingChips: number;
+}
 
 /**
  * Custom hook for managing player hand, chips, betting, and scoring state
@@ -25,6 +38,16 @@ export function usePlayerHand() {
   const [longestStreak, setLongestStreak] = useState(0);
   const [peakChips, setPeakChips] = useState(1000);
   const [scoreMultiplier, setScoreMultiplier] = useState(1.0); // 1.0x - 2.0x based on counting accuracy
+
+  // Session statistics
+  const [sessionStats, setSessionStats] = useState<SessionStats>({
+    handsPlayed: 0,
+    handsWon: 0,
+    handsLost: 0,
+    pushes: 0,
+    blackjacks: 0,
+    startingChips: 1000,
+  });
 
   /**
    * Award points for a correct decision and update streak
@@ -59,6 +82,49 @@ export function usePlayerHand() {
     setCurrentBet(0);
   }, []);
 
+  /**
+   * Record the result of a hand in session statistics
+   */
+  const recordHandResult = useCallback((result: HandResult) => {
+    setSessionStats((prev) => {
+      const newStats = { ...prev, handsPlayed: prev.handsPlayed + 1 };
+
+      switch (result) {
+        case "WIN":
+          newStats.handsWon = prev.handsWon + 1;
+          break;
+        case "BLACKJACK":
+          newStats.handsWon = prev.handsWon + 1;
+          newStats.blackjacks = prev.blackjacks + 1;
+          break;
+        case "LOSE":
+        case "BUST":
+          newStats.handsLost = prev.handsLost + 1;
+          break;
+        case "PUSH":
+          newStats.pushes = prev.pushes + 1;
+          break;
+        default:
+          // No stat change for unknown result types
+          break;
+      }
+
+      return newStats;
+    });
+  }, []);
+
+  /**
+   * Calculate derived session statistics
+   */
+  const getSessionNetProfit = useCallback(() => {
+    return playerChips - sessionStats.startingChips;
+  }, [playerChips, sessionStats.startingChips]);
+
+  const getSessionWinRate = useCallback(() => {
+    if (sessionStats.handsPlayed === 0) return 0;
+    return (sessionStats.handsWon / sessionStats.handsPlayed) * 100;
+  }, [sessionStats.handsWon, sessionStats.handsPlayed]);
+
   // Update peak chips whenever chips change
   useEffect(() => {
     if (playerChips > peakChips) {
@@ -90,6 +156,12 @@ export function usePlayerHand() {
     setPeakChips,
     scoreMultiplier,
     setScoreMultiplier,
+
+    // Session statistics
+    sessionStats,
+    recordHandResult,
+    getSessionNetProfit,
+    getSessionWinRate,
 
     // Functions
     awardCorrectDecisionPoints,

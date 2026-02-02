@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "CloudFront Resources for Card Counting Trainer"
+Description: "CloudFront Resources for Backroom Blackjack"
 
 Parameters:
   Stage:
@@ -18,8 +18,133 @@ Parameters:
   AppBucketRegionalDomainName:
     Type: String
     Description: Regional domain name of the S3 bucket for CloudFront origin
+  DomainName:
+    Type: String
+    Description: Custom domain name (optional)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID (optional)
+    Default: ""
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN in us-east-1 (optional)
+    Default: ""
+
+Conditions:
+  HasCustomDomain: !And
+    - !Not [!Equals [!Ref DomainName, ""]]
+    - !Not [!Equals [!Ref HostedZoneId, ""]]
+    - !Not [!Equals [!Ref CertificateArn, ""]]
 
 Resources:
+  # CloudFront Function for SPA routing
+  # Rewrites /path to /path/index.html for Next.js static export
+  UrlRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AppName}-url-rewrite-${Stage}"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+
+          // If URI has a file extension, serve as-is
+          if (uri.includes('.')) {
+            return request;
+          }
+
+          // Remove trailing slash if present (except for root)
+          if (uri.length > 1 && uri.endsWith('/')) {
+            uri = uri.slice(0, -1);
+          }
+
+          // Append /index.html for directory-style paths
+          if (uri === '' || uri === '/') {
+            request.uri = '/index.html';
+          } else {
+            request.uri = uri + '/index.html';
+          }
+
+          return request;
+        }
+      FunctionConfig:
+        Comment: !Sub "URL rewrite for ${AppName} ${Stage} SPA routing"
+        Runtime: cloudfront-js-2.0
+
+  # Origin Access Control for S3
+  AppCloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AppName}BucketOAC-${Stage}"
+        Description: !Sub "Origin Access Control for ${AppName} ${Stage} bucket"
+        SigningBehavior: always
+        SigningProtocol: sigv4
+        OriginAccessControlOriginType: s3
+
+  # CloudFront Distribution
+  AppCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "CloudFront distribution for ${AppName} ${Stage}"
+        Enabled: true
+        DefaultRootObject: index.html
+        Aliases:
+          !If
+            - HasCustomDomain
+            - - !Ref DomainName
+              - !Sub "www.${DomainName}"
+            - !Ref AWS::NoValue
+        ViewerCertificate:
+          !If
+            - HasCustomDomain
+            - AcmCertificateArn: !Ref CertificateArn
+              SslSupportMethod: sni-only
+              MinimumProtocolVersion: TLSv1.2_2021
+            - CloudFrontDefaultCertificate: true
+        Origins:
+          - DomainName: !Ref AppBucketRegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Required to be empty when using OAC
+            OriginAccessControlId: !GetAtt AppCloudFrontOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt UrlRewriteFunction.FunctionARN
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+        PriceClass: PriceClass_100 # US, Canada, Europe
+        HttpVersion: http2and3
+      Tags:
+        - Key: Project
+          Value: backroom-blackjack
+        - Key: Stage
+          Value: !Ref Stage
+
+  # Bucket policy for CloudFront access
   AppBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties:
@@ -37,37 +162,28 @@ Resources:
               StringEquals:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${AppCloudFrontDistribution}"
 
-  AppCloudFrontOAC:
-    Type: AWS::CloudFront::OriginAccessControl
+  # Route53 DNS Records (if custom domain)
+  DnsRecordApex:
+    Type: AWS::Route53::RecordSet
+    Condition: HasCustomDomain
     Properties:
-      OriginAccessControlConfig:
-        Name: !Sub "${AppName}BucketOAC-${Stage}"
-        Description: !Sub "Origin Access Control for ${AppName} ${Stage} bucket"
-        SigningBehavior: always
-        SigningProtocol: sigv4
-        OriginAccessControlOriginType: s3
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt AppCloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID (constant)
 
-  AppCloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
+  DnsRecordWww:
+    Type: AWS::Route53::RecordSet
+    Condition: HasCustomDomain
     Properties:
-      DistributionConfig:
-        Comment: !Sub "CloudFront distribution for ${AppName} ${Stage}"
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
-        Origins:
-          - DomainName: !Ref AppBucketRegionalDomainName
-            Id: S3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: "" # Required to be empty when using OAC
-            OriginAccessControlId: !GetAtt AppCloudFrontOAC.Id
-        DefaultRootObject: index.html
-        Enabled: true
-        HttpVersion: http2
-        DefaultCacheBehavior:
-          TargetOriginId: S3Origin
-          ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
-          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "www.${DomainName}"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt AppCloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
 
 Outputs:
   CloudFrontDistributionId:
@@ -77,3 +193,7 @@ Outputs:
   CloudFrontDomainName:
     Description: "Domain name of the CloudFront distribution"
     Value: !GetAtt AppCloudFrontDistribution.DomainName
+
+  CloudFrontUrl:
+    Description: "CloudFront Distribution URL"
+    Value: !Sub "https://${AppCloudFrontDistribution.DomainName}"

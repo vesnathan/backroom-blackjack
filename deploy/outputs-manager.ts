@@ -36,7 +36,7 @@ export class OutputsManager {
   private outputsFilePath: string;
 
   constructor() {
-    this.outputsFilePath = join(__dirname, "deployment-outputs.json");
+    this.outputsFilePath = join(import.meta.dirname, "deployment-outputs.json");
   }
 
   async saveStackOutputs(
@@ -114,7 +114,7 @@ export class OutputsManager {
       deploymentOutputs.stages[stage].lastUpdated = new Date().toISOString();
 
       // Ensure directory exists
-      await mkdir(join(__dirname), { recursive: true });
+      await mkdir(join(import.meta.dirname), { recursive: true });
 
       // Save updated outputs
       await writeFile(

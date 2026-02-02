@@ -1,11 +1,9 @@
-import * as fs from "fs-extra";
+import * as fsExtra from "fs-extra";
+import * as fsPromises from "fs/promises";
+import { createWriteStream } from "fs";
 import * as path from "path";
 import * as esbuild from "esbuild";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import {
-  LambdaClient,
-  UpdateFunctionCodeCommand,
-} from "@aws-sdk/client-lambda";
 import archiver from "archiver";
 import { logger } from "./logger";
 
@@ -36,7 +34,6 @@ export class LambdaCompiler {
   private s3KeyPrefix: string;
   private stage: string;
   private s3Client?: S3Client;
-  private lambdaClient?: LambdaClient;
   private region?: string;
   private debugMode: boolean;
   private appName: string;
@@ -50,11 +47,10 @@ export class LambdaCompiler {
     this.stage = options.stage || "dev";
     this.region = options.region;
     this.debugMode = options.debugMode || false;
-    this.appName = options.appName || "cardcountingtrainer";
+    this.appName = options.appName || "backroom-blackjack";
 
     if (this.s3BucketName && options.region) {
       this.s3Client = new S3Client({ region: options.region });
-      this.lambdaClient = new LambdaClient({ region: options.region });
     }
   }
 
@@ -70,7 +66,7 @@ export class LambdaCompiler {
     }
 
     // Ensure output directory exists
-    await fs.ensureDir(this.outputDir);
+    await fsExtra.ensureDir(this.outputDir);
 
     // Compile each Lambda function
     const uploadedFunctions: string[] = [];
@@ -99,13 +95,6 @@ export class LambdaCompiler {
               `✓ Uploaded ${lambdaFunc.functionName} to S3: s3://${this.s3BucketName}/${s3Key}`,
             );
           }
-
-          // Force Lambda function to update from S3
-          await this.updateLambdaFunctionCode(
-            lambdaFunc.functionName,
-            this.s3BucketName,
-            s3Key,
-          );
         }
       } catch (error: any) {
         this.logger.error(
@@ -138,12 +127,12 @@ export class LambdaCompiler {
   private async discoverLambdaFunctions(): Promise<LambdaFunction[]> {
     const functions: LambdaFunction[] = [];
 
-    if (!(await fs.pathExists(this.baseLambdaDir))) {
+    if (!(await fsExtra.pathExists(this.baseLambdaDir))) {
       this.logger.warning(`Lambda directory not found: ${this.baseLambdaDir}`);
       return functions;
     }
 
-    const files = await fs.readdir(this.baseLambdaDir);
+    const files = await fsPromises.readdir(this.baseLambdaDir);
 
     for (const file of files) {
       if (file.endsWith(".ts") && !file.endsWith(".d.ts")) {
@@ -203,7 +192,7 @@ export class LambdaCompiler {
 ${jsCode}`;
 
       // Write compiled JavaScript with header
-      await fs.writeFile(lambdaFunc.outputFile, output, "utf-8");
+      await fsPromises.writeFile(lambdaFunc.outputFile, output, "utf-8");
 
       if (this.debugMode) {
         this.logger.debug(`✓ Compiled ${lambdaFunc.functionName}`);
@@ -220,7 +209,7 @@ ${jsCode}`;
 
   private async createZipFile(lambdaFunc: LambdaFunction): Promise<void> {
     return new Promise((resolve, reject) => {
-      const output = fs.createWriteStream(lambdaFunc.zipFile);
+      const output = createWriteStream(lambdaFunc.zipFile);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       output.on("close", () => {
@@ -253,7 +242,7 @@ ${jsCode}`;
       throw new Error("S3 client not configured for upload");
     }
 
-    const zipContent = await fs.readFile(zipFilePath);
+    const zipContent = await fsPromises.readFile(zipFilePath);
 
     const command = new PutObjectCommand({
       Bucket: this.s3BucketName,
@@ -281,61 +270,12 @@ ${jsCode}`;
   }
 
   async clean(): Promise<void> {
-    if (await fs.pathExists(this.outputDir)) {
+    if (await fsExtra.pathExists(this.outputDir)) {
       this.logger.info(`Cleaning Lambda output directory: ${this.outputDir}`);
-      await fs.remove(this.outputDir);
+      await fsExtra.remove(this.outputDir);
     }
   }
 
-  private toKebabCase(str: string): string {
-    return str.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-
-  /**
-   * Force update Lambda function code from S3
-   * This is necessary because CloudFormation doesn't update Lambda code when only S3 file content changes
-   */
-  private async updateLambdaFunctionCode(
-    functionName: string,
-    s3Bucket: string,
-    s3Key: string,
-  ): Promise<void> {
-    if (!this.lambdaClient) {
-      return;
-    }
-
-    const kebabCaseName = this.toKebabCase(functionName);
-    const fullFunctionName = `${this.appName}-${kebabCaseName}-${this.stage}`;
-
-    try {
-      const command = new UpdateFunctionCodeCommand({
-        FunctionName: fullFunctionName,
-        S3Bucket: s3Bucket,
-        S3Key: s3Key,
-      });
-
-      await this.lambdaClient.send(command);
-
-      if (this.debugMode) {
-        this.logger.debug(
-          `✓ Force updated Lambda function: ${fullFunctionName}`,
-        );
-      }
-    } catch (error: any) {
-      // Lambda might not exist yet (first deployment), so don't fail
-      if (error.name === "ResourceNotFoundException") {
-        if (this.debugMode) {
-          this.logger.debug(
-            `Lambda function ${fullFunctionName} does not exist yet (will be created by CloudFormation)`,
-          );
-        }
-      } else {
-        this.logger.warning(
-          `Could not force update Lambda ${fullFunctionName}: ${error.message}`,
-        );
-      }
-    }
-  }
 }
 
 export async function compileLambdaFunctions(

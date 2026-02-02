@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "AppSync Resources for Card Counting Trainer"
+Description: "AppSync Resources for Backroom Blackjack"
 
 Parameters:
   Stage:
@@ -31,6 +31,22 @@ Parameters:
   UserPoolId:
     Type: String
     Description: Cognito User Pool ID
+  GetUploadUrlLambdaArn:
+    Type: String
+    Description: ARN of the GetUploadUrl Lambda function
+    Default: ""
+  SendInviteLambdaArn:
+    Type: String
+    Description: ARN of the SendInvite Lambda function
+    Default: ""
+  CreateCheckoutLambdaArn:
+    Type: String
+    Description: ARN of the CreateCheckout Lambda function
+    Default: ""
+  CreateChipCheckoutLambdaArn:
+    Type: String
+    Description: ARN of the CreateChipCheckout Lambda function
+    Default: ""
 
 Resources:
   AppSyncLoggingServiceRole:
@@ -82,7 +98,7 @@ Resources:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQlApi.ApiId
-      Name: !Sub "${AppName}MainTableDynamoDBDataSource"
+      Name: MainTableDynamoDBDataSource
       Type: AMAZON_DYNAMODB
       DynamoDBConfig:
         TableName: !Ref DataTableName
@@ -93,8 +109,92 @@ Resources:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQlApi.ApiId
-      Name: !Sub "${AppName}NoneDataSource"
+      Name: NoneDataSource
       Type: NONE
+
+  # Lambda IAM Role for AppSync
+  AppSyncLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-appsync-lambda-role-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AppName}-appsync-lambda-policy-${Stage}"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Ref GetUploadUrlLambdaArn
+                  - !Ref SendInviteLambdaArn
+                  - !Ref CreateCheckoutLambdaArn
+                  - !Ref CreateChipCheckoutLambdaArn
+
+  # Lambda DataSource for GetUploadUrl
+  GetUploadUrlLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      Name: GetUploadUrlLambdaDataSource
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !Ref GetUploadUrlLambdaArn
+      ServiceRoleArn: !GetAtt AppSyncLambdaRole.Arn
+
+  # Lambda DataSource for SendInvite
+  SendInviteLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      Name: SendInviteLambdaDataSource
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !Ref SendInviteLambdaArn
+      ServiceRoleArn: !GetAtt AppSyncLambdaRole.Arn
+
+  # Lambda DataSource for CreateCheckout
+  CreateCheckoutLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      Name: CreateCheckoutLambdaDataSource
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !Ref CreateCheckoutLambdaArn
+      ServiceRoleArn: !GetAtt AppSyncLambdaRole.Arn
+
+  # Lambda DataSource for CreateChipCheckout
+  CreateChipCheckoutLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      Name: CreateChipCheckoutLambdaDataSource
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !Ref CreateChipCheckoutLambdaArn
+      ServiceRoleArn: !GetAtt AppSyncLambdaRole.Arn
+
+  # SendInvite Resolver
+  SendInviteResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: sendInvite
+      DataSourceName: !GetAtt SendInviteLambdaDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Invite/Mutations/Mutation.sendInvite.js"
 
   # User Resolver
   GetUserResolver:
@@ -109,6 +209,222 @@ Resources:
         Name: APPSYNC_JS
         RuntimeVersion: 1.0.0
       CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/User/Queries/Query.getUser.js"
+
+  # Leaderboard Resolver
+  GetLeaderboardResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getLeaderboard
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Leaderboard/Queries/Query.getLeaderboard.js"
+
+  # Public Profile Resolver
+  GetPublicProfileResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getPublicProfile
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/User/Queries/Query.getPublicProfile.js"
+
+  # Avatar Upload Resolvers
+  GetAvatarUploadUrlResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: getAvatarUploadUrl
+      DataSourceName: !GetAtt GetUploadUrlLambdaDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Uploads/Mutations/Mutation.getAvatarUploadUrl.js"
+
+  UpdateAvatarResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: updateAvatar
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Uploads/Mutations/Mutation.updateAvatar.js"
+
+  # Chat Resolvers
+  GetChatMessagesResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getChatMessages
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Chat/Queries/Query.getChatMessages.js"
+
+  SendChatMessageResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: sendChatMessage
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Chat/Mutations/Mutation.sendChatMessage.js"
+
+  # Supporters Resolver
+  GetSupportersResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getSupporters
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Supporters/Queries/Query.getSupporters.js"
+
+  # Hand Recording Resolvers (per-hand event sourcing for analytics)
+  RecordHandResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: recordHand
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Hand/Mutations/Mutation.recordHand.js"
+
+  GetHandHistoryResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getHandHistory
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Hand/Queries/Query.getHandHistory.js"
+
+  # Subscription Resolvers
+  GetSubscriptionTiersResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getSubscriptionTiers
+      DataSourceName: !GetAtt NoneDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Subscription/Queries/Query.getSubscriptionTiers.js"
+
+  GetChipPackagesResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Query
+      FieldName: getChipPackages
+      DataSourceName: !GetAtt NoneDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Subscription/Queries/Query.getChipPackages.js"
+
+  CreateCheckoutSessionResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: createCheckoutSession
+      DataSourceName: !GetAtt CreateCheckoutLambdaDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Subscription/Mutations/Mutation.createCheckoutSession.js"
+
+  CreateChipCheckoutResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: createChipCheckout
+      DataSourceName: !GetAtt CreateChipCheckoutLambdaDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/Subscription/Mutations/Mutation.createChipCheckout.js"
+
+  # User Mutation Resolvers
+  SaveBadgesResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: saveBadges
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/User/Mutations/Mutation.saveBadges.js"
+
+  UpdateChipsResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: updateChips
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/User/Mutations/Mutation.updateChips.js"
+
+  ResetUserDataResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQlApi.ApiId
+      TypeName: Mutation
+      FieldName: resetUserData
+      DataSourceName: !GetAtt MainTableDataSource.Name
+      Kind: UNIT
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      CodeS3Location: !Sub "s3://${TemplateBucketName}/resolvers/${Stage}/${ResolversBuildHash}/User/Mutations/Mutation.resetUserData.js"
 
 Outputs:
   AppSyncApiUrl:

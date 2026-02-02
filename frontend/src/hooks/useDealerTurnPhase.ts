@@ -11,7 +11,6 @@ import { Card } from "@/types/game";
 import { calculateHandValue, isBusted } from "@/lib/gameActions";
 import { CHARACTER_DIALOGUE, pick } from "@/data/dialogue";
 import { CARD_ANIMATION_DURATION } from "@/constants/animations";
-import { AudioPriority } from "@/hooks/useAudioQueue";
 import { debugLog } from "@/utils/debug";
 
 interface UseDealerTurnPhaseParams {
@@ -21,6 +20,7 @@ interface UseDealerTurnPhaseParams {
   gameSettings: GameSettings;
   currentDealer: DealerCharacter | null;
   setDealerRevealed: (revealed: boolean) => void;
+  setRunningCount: (count: number | ((prev: number) => number)) => void;
   setDealerHand: (
     hand: PlayerHand | ((prev: PlayerHand) => PlayerHand),
   ) => void;
@@ -39,24 +39,7 @@ interface UseDealerTurnPhaseParams {
     playerId: string,
     message: string,
     position: number,
-    reactionType?:
-      | "bust"
-      | "hit21"
-      | "goodHit"
-      | "badStart"
-      | "win"
-      | "loss"
-      | "dealer_blackjack"
-      | "distraction",
-    priority?: AudioPriority,
-    dealerVoiceLine?:
-      | "place_bets"
-      | "dealer_busts"
-      | "dealer_has_17"
-      | "dealer_has_18"
-      | "dealer_has_19"
-      | "dealer_has_20"
-      | "dealer_has_21",
+    conversationId?: string,
   ) => void;
 }
 
@@ -74,6 +57,7 @@ export function useDealerTurnPhase({
   gameSettings,
   currentDealer,
   setDealerRevealed,
+  setRunningCount,
   setDealerHand,
   setFlyingCards,
   setPhase,
@@ -89,7 +73,7 @@ export function useDealerTurnPhase({
   const currentDealerHandRef = useRef<Card[]>([]);
   const prevPhaseRef = useRef<GamePhase | null>(null);
   const hasStartedRef = useRef(false);
-  const audioQueuedRef = useRef(false); // Track if we've queued audio for this dealer turn
+  const speechBubbleShownRef = useRef(false); // Track if we've shown speech bubble for this dealer turn
 
   // eslint-disable-next-line sonarjs/cognitive-complexity
   useEffect(() => {
@@ -103,12 +87,15 @@ export function useDealerTurnPhase({
       dealerTurnProcessingRef.current = false;
       dealerFinishedRef.current = false;
       hasStartedRef.current = false;
-      audioQueuedRef.current = false; // Reset audio flag
+      speechBubbleShownRef.current = false; // Reset speech bubble flag
       debugLog(
         "dealCards",
         `   dealerFinishedRef: ${dealerFinishedRef.current}`,
       );
-      debugLog("dealCards", `   audioQueuedRef: ${audioQueuedRef.current}`);
+      debugLog(
+        "dealCards",
+        `   speechBubbleShownRef: ${speechBubbleShownRef.current}`,
+      );
       prevPhaseRef.current = phase;
     }
 
@@ -145,6 +132,18 @@ export function useDealerTurnPhase({
         `Dealer hand value: ${calculateHandValue(dealerHand.cards)}`,
       );
       setDealerRevealed(true);
+
+      // Count the hole card now that it's revealed
+      // The hole card is the second dealer card (index 1)
+      if (dealerHand.cards.length >= 2) {
+        const holeCard = dealerHand.cards[1];
+        debugLog(
+          "dealCards",
+          `Counting revealed hole card: ${holeCard.rank}${holeCard.suit} (count: ${holeCard.count})`,
+        );
+        setRunningCount((prev) => prev + holeCard.count);
+      }
+
       dealerFinishedRef.current = false; // Reset flag when entering dealer turn
 
       // 10% chance to show dealer-directed banter when dealer reveals
@@ -286,59 +285,33 @@ export function useDealerTurnPhase({
             debugLog("dealCards", `Dealer busted: ${isBust}`);
 
             // Only announce and queue audio once
-            if (!audioQueuedRef.current) {
-              audioQueuedRef.current = true;
+            if (!speechBubbleShownRef.current) {
+              speechBubbleShownRef.current = true;
               debugLog(
                 "dealerSpeech",
                 `🔊 Creating dealer speech bubble and queueing audio`,
               );
-              debugLog(
-                "dealCards",
-                `🔊 Creating dealer speech bubble and queueing audio`,
-              );
+              debugLog("dealCards", `🔊 Creating dealer speech bubble`);
 
-              // Determine message and audio
+              // Determine message
               if (currentDealer) {
                 let message: string;
-                let voiceLine:
-                  | "dealer_busts"
-                  | "dealer_has_17"
-                  | "dealer_has_18"
-                  | "dealer_has_19"
-                  | "dealer_has_20"
-                  | "dealer_has_21";
 
                 if (isBust) {
                   message = "Dealer busts";
-                  voiceLine = "dealer_busts";
                 } else if (finalValue === 17) {
-                  // Use proper words for dealer callouts (matching audio files)
                   message = "Dealer has seventeen";
-                  voiceLine = "dealer_has_17";
                 } else if (finalValue === 18) {
                   message = "Dealer has eighteen";
-                  voiceLine = "dealer_has_18";
                 } else if (finalValue === 19) {
                   message = "Dealer has nineteen";
-                  voiceLine = "dealer_has_19";
                 } else if (finalValue === 20) {
                   message = "Dealer has twenty";
-                  voiceLine = "dealer_has_20";
                 } else {
                   message = "Dealer has twenty-one";
-                  voiceLine = "dealer_has_21";
                 }
 
-                // Speech bubble handles both visual display AND audio queueing
-                // Position -1 for dealer, voiceLine specifies which audio file to use
-                addSpeechBubble(
-                  "dealer",
-                  message,
-                  -1,
-                  undefined,
-                  AudioPriority.HIGH,
-                  voiceLine,
-                );
+                addSpeechBubble("dealer", message, -1);
               }
             } else {
               debugLog(
@@ -367,6 +340,7 @@ export function useDealerTurnPhase({
         dealNextCard();
       }, 1500);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     phase,
     // Removed unstable dependencies to prevent duplicate card dealing:

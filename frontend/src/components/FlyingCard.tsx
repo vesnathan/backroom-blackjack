@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { CARD_ANIMATION_DURATION } from "@/constants/animations";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { getLayoutConfig } from "@/constants/cardLayout";
 
 interface FlyingCardProps {
   fromPosition: { left: string; top: string };
@@ -15,6 +17,8 @@ export default function FlyingCard({
   onAnimationComplete,
 }: FlyingCardProps) {
   const [isFlying, setIsFlying] = useState(true);
+  const isMobile = useIsMobile();
+  const { cardWidth, cardHeight } = getLayoutConfig(isMobile);
 
   const handleAnimationEnd = () => {
     setIsFlying(false);
@@ -30,8 +34,8 @@ export default function FlyingCard({
           position: "fixed",
           left: fromPosition.left,
           top: fromPosition.top,
-          width: "70px",
-          height: "98px",
+          width: `${cardWidth}px`,
+          height: `${cardHeight}px`,
           zIndex: 9999,
           animation: `fly-to-position ${CARD_ANIMATION_DURATION}ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
           pointerEvents: "none",

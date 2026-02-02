@@ -1,8 +1,9 @@
 import { execSync, spawn } from "child_process";
 import * as fsPromises from "fs/promises";
-import * as fs from "fs-extra"; // Changed to fs-extra for better file system operations
+import * as fsExtra from "fs-extra";
+import { existsSync, createWriteStream, createReadStream, constants as fsConstants } from "fs";
 import * as path from "path";
-import * as os from "os"; // Added import
+import * as os from "os";
 import {
   S3Client,
   PutObjectCommand,
@@ -84,8 +85,8 @@ class ResolverCompiler {
     // buildDir is a temporary directory for the entire compilation process of this instance.
     // It will be created by setupBuildDirectory and cleaned up at start of each deploy.
     // Use .cache directory inside monorepo to keep build artifacts
-    // __dirname is /packages/deploy/utils, so go up 3 levels to get to monorepo root
-    const monorepoRoot = path.join(__dirname, "..", "..", "..");
+    // import.meta.dirname is /packages/deploy/utils, so go up 3 levels to get to monorepo root
+    const monorepoRoot = path.join(import.meta.dirname, "..", "..", "..");
     const parts = this.baseResolverDir.split(path.sep);
     const pkgIndex = parts.indexOf("packages");
     const appName =
@@ -118,6 +119,11 @@ class ResolverCompiler {
       `Could not determine app name from baseResolverDir: ${this.baseResolverDir}, defaulting to 'unknown'`,
     );
     return "unknown";
+  }
+
+  private getProjectRoot(): string {
+    // import.meta.dirname is deploy/utils, go up 2 levels to project root
+    return path.join(import.meta.dirname, "..", "..");
   }
 
   private async recursiveCopy(src: string, dest: string): Promise<void> {
@@ -350,7 +356,7 @@ class ResolverCompiler {
     const compiledJsPath = path.join(tempCompileDir, compiledJsFileName);
 
     try {
-      await fsPromises.access(compiledJsPath, fs.constants.F_OK);
+      await fsPromises.access(compiledJsPath, fsConstants.F_OK);
       logger.debug(`Successfully found compiled file: ${compiledJsPath}`);
     } catch (e) {
       logger.error(
@@ -378,7 +384,7 @@ class ResolverCompiler {
     // Use a repo-local cache directory that is git-ignored: .cache/deploy/<app>/lib
     if (this.sharedFileS3Key) {
       const appName = this.getAppName();
-      const monorepoRoot = path.join(__dirname, "..", "..", "..", "..");
+      const monorepoRoot = path.join(import.meta.dirname, "..", "..", "..", "..");
       const localSavePathBaseForApp = path.join(
         monorepoRoot,
         ".cache",
@@ -538,7 +544,7 @@ class ResolverCompiler {
 
   public async compileAndUploadResolvers(): Promise<string> {
     const appName = this.getAppName();
-    const monorepoRoot = path.join(__dirname, "..", "..", "..", "..");
+    const monorepoRoot = path.join(import.meta.dirname, "..", "..", "..", "..");
 
     const stopSpinner = logger.infoWithSpinner(
       "Starting resolver compilation and upload...",
@@ -573,7 +579,7 @@ class ResolverCompiler {
     );
 
     try {
-      if (fs.existsSync(deploymentCacheBaseForApp)) {
+      if (existsSync(deploymentCacheBaseForApp)) {
         logger.debug(
           `Cleaning up previous deployment cache (except logs): ${deploymentCacheBaseForApp}`,
         );
@@ -582,11 +588,11 @@ class ResolverCompiler {
         const resolversDir = path.join(deploymentCacheBaseForApp, "resolvers");
         const libDir = path.join(deploymentCacheBaseForApp, "lib");
 
-        if (fs.existsSync(resolversDir)) {
+        if (existsSync(resolversDir)) {
           await fsPromises.rm(resolversDir, { recursive: true, force: true });
           logger.debug("Cleaned resolvers directory");
         }
-        if (fs.existsSync(libDir)) {
+        if (existsSync(libDir)) {
           await fsPromises.rm(libDir, { recursive: true, force: true });
           logger.debug("Cleaned lib directory");
         }
@@ -840,7 +846,7 @@ class ResolverCompiler {
 
     // Extract app name from baseResolverDir to locate the correct backend package
     const appName = this.getAppName();
-    const monorepoRoot = path.join(__dirname, "..", "..", "..");
+    const monorepoRoot = path.join(import.meta.dirname, "..", "..", "..");
     const sourcePackageJsonPath = this.backendPackageJsonPath || path.join(
       monorepoRoot,
       "packages",
@@ -853,9 +859,9 @@ class ResolverCompiler {
     let sourceDevDependencies: Record<string, string> = {};
 
     try {
-      // fs-extra is imported as fs at the top of the file
-      if (fs.existsSync(sourcePackageJsonPath)) {
-        const sourcePkg = await fs.readJson(sourcePackageJsonPath); // fs-extra's readJson
+      if (existsSync(sourcePackageJsonPath)) {
+        const sourcePkgContent = await fsPromises.readFile(sourcePackageJsonPath, "utf-8");
+        const sourcePkg = JSON.parse(sourcePkgContent);
         sourceDependencies = sourcePkg.dependencies || {};
         sourceDevDependencies = sourcePkg.devDependencies || {}; // Read devDependencies for types
         logger.debug(
@@ -880,10 +886,18 @@ class ResolverCompiler {
     };
 
     // Add source dependencies, but filter out local workspace packages
-    const localPackages = new Set(["shared", "cwlfrontend", "cwlbackend"]); // Add any other local packages here
+    const localPackages = new Set(["shared", "cwlfrontend", "cwlbackend", "cctbackend", "cctfrontend"]); // Add any other local packages here
+    const isLocalPackage = (pkg: string): boolean => {
+      // Check exact match
+      if (localPackages.has(pkg)) return true;
+      // Check scoped packages (workspace packages like @backroom-blackjack/shared)
+      if (pkg.startsWith("@backroom-blackjack/")) return true;
+      // Check wildcard versions (workspace references)
+      return false;
+    };
     if (sourceDependencies) {
       for (const [pkg, version] of Object.entries(sourceDependencies)) {
-        if (!localPackages.has(pkg)) {
+        if (!isLocalPackage(pkg) && version !== "*") {
           packageJsonDependencies[pkg] = version;
         } else {
           logger.debug(
@@ -895,10 +909,10 @@ class ResolverCompiler {
     if (sourceDevDependencies) {
       // Also filter devDependencies
       for (const [pkg, version] of Object.entries(sourceDevDependencies)) {
-        if (!localPackages.has(pkg) && !packageJsonDependencies[pkg]) {
+        if (!isLocalPackage(pkg) && version !== "*" && !packageJsonDependencies[pkg]) {
           // Avoid overwriting if already in deps
           packageJsonDependencies[pkg] = version;
-        } else if (localPackages.has(pkg)) {
+        } else if (isLocalPackage(pkg) || version === "*") {
           logger.debug(
             `Excluding local package from temp build devDependencies: ${pkg}`,
           );
@@ -1006,36 +1020,12 @@ class ResolverCompiler {
         `Found gqlTypes imports in ${resolverFileName}: ${Array.from(importedGqlTypes).join(", ")}`,
       );
 
-      // Read gqlTypes.ts from the app's frontend or backend generated types
-      const appNameForTypes = this.getAppName();
-      const candidatePaths = this.gqlTypesPath
-        ? [this.gqlTypesPath]
-        : [
-            path.resolve(
-              __dirname,
-              `../../../packages/${appNameForTypes}/frontend/src/types/gqlTypes.ts`,
-            ),
-            path.resolve(
-              __dirname,
-              `../../../packages/${appNameForTypes}/backend/src/types/gqlTypes.ts`,
-            ),
-          ];
+      // Read gqlTypes from shared package
+      const projectRoot = this.getProjectRoot();
+      const gqlTypesSourcePath = path.join(projectRoot, "shared", "src", "types", "gqlTypes.ts");
 
-      let gqlTypesSourcePath: string | undefined = undefined;
-      for (const p of candidatePaths) {
-        if (fs.existsSync(p)) {
-          gqlTypesSourcePath = p;
-          break;
-        }
-      }
-
-      if (!gqlTypesSourcePath) {
-        logger.error(
-          `gqlTypes.ts not found for app '${appNameForTypes}'. Checked: ${candidatePaths.join(", ")}`,
-        );
-        throw new Error(
-          `gqlTypes.ts not found for app '${appNameForTypes}'. Please generate GraphQL types for this app before deploying.`,
-        );
+      if (!existsSync(gqlTypesSourcePath)) {
+        throw new Error(`gqlTypes.ts not found at: ${gqlTypesSourcePath}. Please generate GraphQL types before deploying.`);
       }
 
       // Read gqlTypes and inline ALL type definitions to avoid dependency issues
@@ -1146,7 +1136,7 @@ type AppSyncIdentityLambda = any;
           `${constantsFile}.ts`,
         );
 
-        if (fs.existsSync(constantsSourcePath)) {
+        if (existsSync(constantsSourcePath)) {
           // Read the constants file and inline its contents
           let constantsContent = await fsPromises.readFile(
             constantsSourcePath,
@@ -1242,7 +1232,7 @@ type AppSyncIdentityLambda = any;
       }
 
       try {
-        await fsPromises.access(compiledJsPath, fs.constants.F_OK);
+        await fsPromises.access(compiledJsPath, fsConstants.F_OK);
       } catch (e) {
         logger.error(
           `Compiled file not found at ${compiledJsPath} after esbuild.`,

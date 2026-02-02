@@ -109,8 +109,15 @@ export default function SplitHandsModal({
         )}
       </div>
 
-      {/* Display both hands */}
-      <div style={{ display: "flex", gap: "24px", marginBottom: "24px" }}>
+      {/* Display both hands - Hand 1 on left, Hand 2 on right */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          gap: "24px",
+          marginBottom: "24px",
+        }}
+      >
         {/* eslint-disable-next-line sonarjs/no-duplicate-string */}
         {/* eslint-disable sonarjs/cognitive-complexity */}
         {hands.map((hand, index) => {
@@ -199,9 +206,10 @@ export default function SplitHandsModal({
                   minHeight: "80px",
                 }}
               >
-                {hand.cards.map((card) => (
+                {hand.cards.map((card, cardIdx) => (
                   <div
-                    key={`${card.rank}${card.suit}`}
+                    // eslint-disable-next-line react/no-array-index-key -- Cards can be duplicates
+                    key={`${card.rank}${card.suit}-${cardIdx}`}
                     style={{
                       width: "50px",
                       height: "70px",

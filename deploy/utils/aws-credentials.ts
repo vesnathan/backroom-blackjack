@@ -3,6 +3,7 @@ import { logger } from "./logger";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { AwsCredentialIdentity } from "@aws-sdk/types";
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
 export async function getAwsCredentials(): Promise<
   AwsCredentialIdentity | undefined
@@ -31,10 +32,6 @@ export async function configureAwsCredentials(): Promise<void> {
     }
 
     try {
-      const {
-        STSClient,
-        GetCallerIdentityCommand,
-      } = require("@aws-sdk/client-sts");
       const stsClient = new STSClient({ region: "us-east-1" });
       await stsClient.send(new GetCallerIdentityCommand({}));
       logger.success("Existing AWS credentials validated successfully");
@@ -100,10 +97,6 @@ AWS_ACCOUNT_ID=${answers.accountId}`;
 
     // Validate the new credentials
     try {
-      const {
-        STSClient,
-        GetCallerIdentityCommand,
-      } = require("@aws-sdk/client-sts");
       const stsClient = new STSClient({ region: "us-east-1" });
       await stsClient.send(new GetCallerIdentityCommand({}));
       logger.success("AWS credentials configured and validated successfully");

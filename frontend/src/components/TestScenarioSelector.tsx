@@ -7,6 +7,7 @@ import {
   getScenarioCategories,
   getScenariosByCategory,
 } from "@/types/testScenarios";
+import { Rank, Suit } from "@/types/game";
 
 interface TestScenarioSelectorProps {
   isOpen: boolean;
@@ -23,8 +24,122 @@ const CATEGORY_LABELS: Record<TestScenario["category"], string> = {
   "soft-hands": "🎴 Soft Hands",
 };
 
-const HOVER_BG_COLOR = "rgba(255, 152, 0, 0.2)";
-const HOVER_BORDER_COLOR = "#FF9800";
+const RANKS: Rank[] = [
+  "A",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+];
+const SUITS: { value: Suit; symbol: string; color: string }[] = [
+  { value: "H", symbol: "♥", color: "#e53935" },
+  { value: "D", symbol: "♦", color: "#e53935" },
+  { value: "C", symbol: "♣", color: "#333" },
+  { value: "S", symbol: "♠", color: "#333" },
+];
+
+interface CardSelection {
+  rank: Rank | null;
+  suit: Suit | null;
+}
+
+// Style constants
+const BG_ORANGE = "#FF9800";
+const BORDER_ORANGE_SOLID = "2px solid #FF9800";
+const BG_WHITE_05 = "rgba(255, 255, 255, 0.05)";
+const BG_WHITE_10 = "rgba(255, 255, 255, 0.1)";
+const BG_WHITE_90 = "rgba(255, 255, 255, 0.9)";
+const BORDER_WHITE_20 = "2px solid rgba(255, 255, 255, 0.2)";
+
+// Card picker component - defined outside to avoid unstable nested component
+function CardPicker({
+  label,
+  selection,
+  onSelect,
+}: {
+  label: string;
+  selection: CardSelection;
+  onSelect: (sel: CardSelection) => void;
+}) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <div style={{ fontSize: "14px", color: "#AAA", marginBottom: "8px" }}>
+        {label}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          marginBottom: "8px",
+        }}
+      >
+        {RANKS.map((rank) => (
+          <button
+            key={rank}
+            type="button"
+            onClick={() => onSelect({ ...selection, rank })}
+            style={{
+              width: "36px",
+              height: "36px",
+              backgroundColor:
+                selection.rank === rank ? BG_ORANGE : BG_WHITE_10,
+              color: "#FFF",
+              border:
+                selection.rank === rank ? BORDER_ORANGE_SOLID : BORDER_WHITE_20,
+              borderRadius: "6px",
+              fontSize: "14px",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            {rank}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: "8px" }}>
+        {SUITS.map(({ value, symbol, color }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onSelect({ ...selection, suit: value })}
+            style={{
+              width: "44px",
+              height: "36px",
+              backgroundColor:
+                selection.suit === value ? BG_ORANGE : BG_WHITE_90,
+              color: selection.suit === value ? "#FFF" : color,
+              border:
+                selection.suit === value
+                  ? BORDER_ORANGE_SOLID
+                  : BORDER_WHITE_20,
+              borderRadius: "6px",
+              fontSize: "20px",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            {symbol}
+          </button>
+        ))}
+      </div>
+      {selection.rank && selection.suit && (
+        <div style={{ marginTop: "8px", fontSize: "16px", color: "#4CAF50" }}>
+          Selected: {selection.rank}
+          {SUITS.find((s) => s.value === selection.suit)?.symbol}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TestScenarioSelector({
   isOpen,
@@ -34,6 +149,26 @@ export default function TestScenarioSelector({
   const [selectedCategory, setSelectedCategory] = useState<
     TestScenario["category"] | "all"
   >("all");
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [card1, setCard1] = useState<CardSelection>({
+    rank: null,
+    suit: null,
+  });
+  const [card2, setCard2] = useState<CardSelection>({
+    rank: null,
+    suit: null,
+  });
+  const [dealerCard, setDealerCard] = useState<CardSelection>({
+    rank: null,
+    suit: null,
+  });
+
+  const resetCustomPicker = () => {
+    setCard1({ rank: null, suit: null });
+    setCard2({ rank: null, suit: null });
+    setDealerCard({ rank: null, suit: null });
+    setShowCustomPicker(false);
+  };
 
   if (!isOpen) return null;
 
@@ -52,6 +187,35 @@ export default function TestScenarioSelector({
     onSelectScenario(null);
     onClose();
   };
+
+  const handleCustomHand = () => {
+    if (!card1.rank || !card1.suit || !card2.rank || !card2.suit) return;
+
+    const randomRank = RANKS[Math.floor(Math.random() * RANKS.length)];
+    const randomSuit = SUITS[Math.floor(Math.random() * SUITS.length)].value;
+
+    const customScenario: TestScenario = {
+      id: "custom-hand",
+      name: "Custom Hand",
+      description: "Player-selected cards",
+      category: "basic",
+      dealerUpCard:
+        dealerCard.rank && dealerCard.suit
+          ? { rank: dealerCard.rank, suit: dealerCard.suit }
+          : { rank: randomRank, suit: randomSuit },
+      playerHands: [
+        { rank: card1.rank, suit: card1.suit },
+        { rank: card2.rank, suit: card2.suit },
+      ],
+    };
+
+    onSelectScenario(customScenario);
+    resetCustomPicker();
+    onClose();
+  };
+
+  const isCustomHandValid =
+    card1.rank && card1.suit && card2.rank && card2.suit;
 
   return (
     <>
@@ -123,11 +287,11 @@ export default function TestScenarioSelector({
                 padding: "8px 16px",
                 fontSize: "16px",
                 cursor: "pointer",
+                // eslint-disable-next-line sonarjs/no-duplicate-string
                 transition: "all 0.2s ease",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor =
-                  "rgba(255, 255, 255, 0.1)";
+                e.currentTarget.style.backgroundColor = BG_WHITE_10;
                 e.currentTarget.style.borderColor = "#FFF";
               }}
               onMouseLeave={(e) => {
@@ -154,7 +318,7 @@ export default function TestScenarioSelector({
               fontWeight: "bold",
               cursor: "pointer",
               transition: "all 0.2s ease",
-              marginBottom: "24px",
+              marginBottom: "12px",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = "#45a049";
@@ -165,6 +329,123 @@ export default function TestScenarioSelector({
           >
             🎲 Random Hand (Normal Play)
           </button>
+
+          {/* Custom Hand Button */}
+          <button
+            type="button"
+            onClick={() => setShowCustomPicker(!showCustomPicker)}
+            style={{
+              width: "100%",
+              backgroundColor: showCustomPicker ? BG_ORANGE : "#2196F3",
+              color: "#FFF",
+              border: "none",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "18px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              marginBottom: "24px",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = showCustomPicker
+                ? "#F57C00"
+                : "#1976D2";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = showCustomPicker
+                ? BG_ORANGE
+                : "#2196F3";
+            }}
+          >
+            🃏 {showCustomPicker ? "Hide Card Picker" : "Choose My Cards"}
+          </button>
+
+          {/* Custom Card Picker */}
+          {showCustomPicker && (
+            <div
+              style={{
+                backgroundColor: BG_WHITE_05,
+                border: BORDER_ORANGE_SOLID,
+                borderRadius: "12px",
+                padding: "20px",
+                marginBottom: "24px",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "bold",
+                  color: BG_ORANGE,
+                  marginBottom: "16px",
+                }}
+              >
+                Pick Your Hole Cards
+              </h3>
+
+              <CardPicker
+                label="First Card"
+                selection={card1}
+                onSelect={setCard1}
+              />
+
+              <CardPicker
+                label="Second Card"
+                selection={card2}
+                onSelect={setCard2}
+              />
+
+              <div
+                style={{
+                  borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+                  paddingTop: "16px",
+                  marginTop: "8px",
+                }}
+              >
+                <CardPicker
+                  label="Dealer Up Card (optional - random if not selected)"
+                  selection={dealerCard}
+                  onSelect={setDealerCard}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
+                <button
+                  type="button"
+                  onClick={handleCustomHand}
+                  disabled={!isCustomHandValid}
+                  style={{
+                    flex: 1,
+                    backgroundColor: isCustomHandValid ? "#4CAF50" : "#666",
+                    color: "#FFF",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    fontSize: "16px",
+                    fontWeight: "bold",
+                    cursor: isCustomHandValid ? "pointer" : "not-allowed",
+                  }}
+                >
+                  ✓ Deal These Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCustomPicker}
+                  style={{
+                    backgroundColor: BG_WHITE_10,
+                    color: "#FFF",
+                    border: "2px solid rgba(255, 255, 255, 0.3)",
+                    borderRadius: "8px",
+                    padding: "12px 20px",
+                    fontSize: "16px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Category Filter */}
           <div style={{ marginBottom: "24px" }}>
@@ -184,14 +465,12 @@ export default function TestScenarioSelector({
                 onClick={() => setSelectedCategory("all")}
                 style={{
                   backgroundColor:
-                    selectedCategory === "all"
-                      ? "#FF9800"
-                      : "rgba(255, 255, 255, 0.1)",
+                    selectedCategory === "all" ? BG_ORANGE : BG_WHITE_10,
                   color: "#FFF",
                   border: "2px solid",
                   borderColor:
                     selectedCategory === "all"
-                      ? "#FF9800"
+                      ? BG_ORANGE
                       : "rgba(255, 255, 255, 0.2)",
                   borderRadius: "8px",
                   padding: "8px 16px",
@@ -210,14 +489,12 @@ export default function TestScenarioSelector({
                   onClick={() => setSelectedCategory(category)}
                   style={{
                     backgroundColor:
-                      selectedCategory === category
-                        ? "#FF9800"
-                        : "rgba(255, 255, 255, 0.1)",
+                      selectedCategory === category ? BG_ORANGE : BG_WHITE_10,
                     color: "#FFF",
                     border: "2px solid",
                     borderColor:
                       selectedCategory === category
-                        ? "#FF9800"
+                        ? BG_ORANGE
                         : "rgba(255, 255, 255, 0.2)",
                     borderRadius: "8px",
                     padding: "8px 16px",
@@ -251,7 +528,7 @@ export default function TestScenarioSelector({
                 key={scenario.id}
                 onClick={() => handleSelectScenario(scenario)}
                 style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  backgroundColor: BG_WHITE_05,
                   color: "#FFF",
                   border: "2px solid rgba(255, 255, 255, 0.1)",
                   borderRadius: "12px",
@@ -263,11 +540,10 @@ export default function TestScenarioSelector({
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor =
                     "rgba(255, 152, 0, 0.2)";
-                  e.currentTarget.style.borderColor = "#FF9800";
+                  e.currentTarget.style.borderColor = BG_ORANGE;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor =
-                    "rgba(255, 255, 255, 0.05)";
+                  e.currentTarget.style.backgroundColor = BG_WHITE_05;
                   e.currentTarget.style.borderColor =
                     "rgba(255, 255, 255, 0.1)";
                 }}
@@ -327,7 +603,7 @@ export default function TestScenarioSelector({
                 >
                   <span
                     style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      backgroundColor: BG_WHITE_10,
                       borderRadius: "4px",
                       padding: "2px 8px",
                     }}
@@ -336,7 +612,7 @@ export default function TestScenarioSelector({
                   </span>
                   <span
                     style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      backgroundColor: BG_WHITE_10,
                       borderRadius: "4px",
                       padding: "2px 8px",
                     }}

@@ -1,0 +1,88 @@
+# Event-sourced hand recording for granular analytics
+# Each hand is stored as its own record with full context
+
+type HandRecord {
+  id: ID!
+  userId: ID!
+  sessionId: ID!              # Groups hands in same play session
+  timestamp: AWSDateTime!
+
+  # Settings snapshot
+  numberOfDecks: Int!
+  countingSystem: String!
+  dealerHitsSoft17: Boolean!
+  blackjackPayout: String!
+
+  # Count context (at time of initial deal)
+  trueCount: Float!
+  runningCount: Int!
+  decksRemaining: Float!
+
+  # Dealer info
+  dealerUpCard: String!        # "7", "A", "10"
+  dealerFinalCards: [String!]! # ["7H", "QS"]
+  dealerFinalValue: Int!
+
+  # Player hands (arrays support splits - index 0 is main hand)
+  playerHands: [[String!]!]!   # [["AH", "KD"], ["AH", "5C", "5S"]] for split
+  playerFinalValues: [Int!]!   # [21, 20]
+  results: [String!]!          # ["BLACKJACK", "WIN"]
+  bets: [Int!]!                # [100, 100]
+  profits: [Int!]!             # [150, 100]
+
+  # Decisions made (flattened across all hands)
+  actions: [String!]!          # ["SPLIT", "STAND", "HIT", "STAND"]
+  correctActions: [String!]!   # What strategy recommended
+
+  # Totals (convenience fields)
+  totalBet: Int!
+  totalProfit: Int!
+  wasCorrectPlay: Boolean!     # All decisions matched strategy
+
+  createdAt: AWSDateTime!
+}
+
+input RecordHandInput {
+  sessionId: ID!
+  numberOfDecks: Int!
+  countingSystem: String!
+  dealerHitsSoft17: Boolean!
+  blackjackPayout: String!
+  trueCount: Float!
+  runningCount: Int!
+  decksRemaining: Float!
+  dealerUpCard: String!
+  dealerFinalCards: [String!]!
+  dealerFinalValue: Int!
+  playerHands: [[String!]!]!
+  playerFinalValues: [Int!]!
+  results: [String!]!
+  bets: [Int!]!
+  profits: [Int!]!
+  actions: [String!]!
+  correctActions: [String!]!
+  totalBet: Int!
+  totalProfit: Int!
+  wasCorrectPlay: Boolean!
+}
+
+type HandHistoryResponse {
+  hands: [HandRecord!]!
+  nextToken: String
+}
+
+extend type Query {
+  getHandHistory(
+    limit: Int
+    nextToken: String
+    startDate: AWSDateTime
+    endDate: AWSDateTime
+    numberOfDecks: Int
+    minTrueCount: Float
+    maxTrueCount: Float
+  ): HandHistoryResponse! @aws_cognito_user_pools
+}
+
+extend type Mutation {
+  recordHand(input: RecordHandInput!): HandRecord! @aws_cognito_user_pools
+}

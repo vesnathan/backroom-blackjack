@@ -1,6 +1,5 @@
 "use client";
 
-/* eslint-disable no-console */
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { client } from "@/lib/amplify";
@@ -38,49 +37,31 @@ export function useChipsSync({
   const { isAuthenticated } = useAuth();
   const hasLoadedRef = useRef(false);
   const lastSavedChipsRef = useRef<number | null>(null);
-  const [chipsLoading, setChipsLoading] = useState(true); // Start as loading for authenticated users
-
-  // Debug logging for chip sync issues
-  console.log(
-    `[ChipsSync] Render: isAuthenticated=${isAuthenticated}, playerChips=${playerChips}, hasLoaded=${hasLoadedRef.current}, lastSaved=${lastSavedChipsRef.current}`,
-  );
+  const [chipsLoading, setChipsLoading] = useState(true);
 
   // Reset refs when user logs out so we reload chips on next login
   useEffect(() => {
     if (!isAuthenticated) {
-      console.log("[ChipsSync] User logged out - resetting refs");
       hasLoadedRef.current = false;
       lastSavedChipsRef.current = null;
-      setChipsLoading(false); // Not loading when not authenticated
+      setChipsLoading(false);
     } else if (!hasLoadedRef.current) {
-      setChipsLoading(true); // Start loading when authenticated but haven't loaded yet
+      setChipsLoading(true);
     }
   }, [isAuthenticated]);
 
   // Load chips from backend on mount
   useEffect(() => {
-    console.log(
-      `[ChipsSync] Load effect: isAuthenticated=${isAuthenticated}, hasLoaded=${hasLoadedRef.current}`,
-    );
     if (!isAuthenticated || hasLoadedRef.current) {
-      console.log(
-        "[ChipsSync] Load effect: skipping (already loaded or not auth)",
-      );
       return;
     }
 
     const loadChips = async () => {
-      console.log("[ChipsSync] loadChips() starting...");
       try {
         const response = await client.graphql({
           query: GET_USER_CHIPS,
           authMode: "userPool",
         });
-
-        console.log(
-          "[ChipsSync] loadChips() response:",
-          JSON.stringify(response),
-        );
 
         const chips = (
           response as {
@@ -88,21 +69,13 @@ export function useChipsSync({
           }
         ).data?.getUser?.chips;
 
-        console.log(`[ChipsSync] loadChips() extracted chips: ${chips}`);
-
         if (chips !== undefined && chips !== null) {
-          console.log(
-            `[ChipsSync] Setting playerChips to ${chips}, lastSavedChipsRef to ${chips}`,
-          );
           setPlayerChips(chips);
-          lastSavedChipsRef.current = chips; // Track loaded value to prevent immediate re-save
+          lastSavedChipsRef.current = chips;
           hasLoadedRef.current = true;
-        } else {
-          console.log(
-            "[ChipsSync] loadChips() chips was null/undefined, not setting",
-          );
         }
       } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("[ChipsSync] Failed to load chips from backend:", error);
       } finally {
         setChipsLoading(false);
@@ -124,6 +97,7 @@ export function useChipsSync({
           authMode: "userPool",
         });
       } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("Failed to save chips to backend:", error);
       }
     },
@@ -132,32 +106,18 @@ export function useChipsSync({
 
   // Save chips whenever they change (after initial load)
   useEffect(() => {
-    console.log(
-      `[ChipsSync] Save effect: isAuthenticated=${isAuthenticated}, hasLoaded=${hasLoadedRef.current}, playerChips=${playerChips}, lastSaved=${lastSavedChipsRef.current}`,
-    );
-
     if (!isAuthenticated || !hasLoadedRef.current) {
-      console.log("[ChipsSync] Save effect: skipping (not auth or not loaded)");
       return;
     }
 
-    // Skip if this is the first check after loading (lastSavedChipsRef will be set by load)
     if (lastSavedChipsRef.current === null) {
-      console.log(
-        "[ChipsSync] Save effect: skipping (lastSavedChipsRef is null)",
-      );
       return;
     }
 
-    // Only save if chips actually changed from what we last saved/loaded
     if (playerChips === lastSavedChipsRef.current) {
-      console.log("[ChipsSync] Save effect: skipping (chips unchanged)");
       return;
     }
 
-    console.log(
-      `[ChipsSync] SAVING chips: ${playerChips} (was ${lastSavedChipsRef.current})`,
-    );
     lastSavedChipsRef.current = playerChips;
     saveChips(playerChips);
   }, [isAuthenticated, playerChips, saveChips]);

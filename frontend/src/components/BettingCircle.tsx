@@ -1,7 +1,21 @@
+import PokerChip from "./PokerChip";
+
 interface BettingCircleProps {
   bet: number;
   position: { left: string; top: string };
   isPlayer?: boolean;
+}
+
+// Get chip color based on bet amount
+function getChipColor(bet: number): string {
+  if (bet >= 1000) return "#FFD700"; // Gold
+  if (bet >= 500) return "#800080"; // Purple
+  if (bet >= 100) return "#1a1a1a"; // Black
+  if (bet >= 50) return "#FF8C00"; // Orange
+  if (bet >= 25) return "#228B22"; // Green
+  if (bet >= 10) return "#1E90FF"; // Blue
+  if (bet >= 5) return "#E31837"; // Red
+  return "#FFFFFF"; // White
 }
 
 export default function BettingCircle({
@@ -44,53 +58,8 @@ export default function BettingCircle({
             gap: "2px",
           }}
         >
-          {/* Visual chip representation */}
-          <div
-            style={{
-              width: "50px",
-              height: "50px",
-              borderRadius: "50%",
-              backgroundColor: "#000",
-              border: "3px solid white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-              boxShadow: "0 4px 8px rgba(0, 0, 0, 0.6)",
-            }}
-          >
-            {/* Inner circle */}
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "50%",
-                backgroundColor: "#000",
-                border: "2px solid white",
-              }}
-            />
-          </div>
-
-          {/* Bet amount */}
-          <div
-            style={{
-              marginTop: "4px",
-              backgroundColor: "rgba(0, 0, 0, 0.8)",
-              padding: "4px 8px",
-              borderRadius: "4px",
-              border: "1px solid #FFD700",
-            }}
-          >
-            <span
-              style={{
-                color: "#FFD700",
-                fontSize: "14px",
-                fontWeight: "bold",
-              }}
-            >
-              ${bet}
-            </span>
-          </div>
+          {/* Poker chip SVG */}
+          <PokerChip size={50} color={getChipColor(bet)} value={bet} />
         </div>
       </div>
     </div>

@@ -142,16 +142,16 @@ export const PROJECT_CONFIGS: Record<StackType, ProjectConfig> = {
     hasResolvers: true,
   },
 
-  [StackType.CardCountingTrainer]: {
-    stackType: StackType.CardCountingTrainer,
-    displayName: "Card Counting Trainer",
-    templateDir: "card-counting-trainer",
-    packageDir: "card-counting-trainer",
+  [StackType.Backroom_Blackjack]: {
+    stackType: StackType.Backroom_Blackjack,
+    displayName: "Backroom Blackjack",
+    templateDir: "backroom-blackjack",
+    packageDir: "backroom-blackjack",
     dependsOn: [],
     buckets: {
-      templates: "cardcountingtrainer-templates-{stage}",
-      frontend: "cardcountingtrainer-userfiles-{stage}",
-      additional: ["cardcountingtrainer-{stage}-cfn-templates-{region}"],
+      templates: "backroom-blackjack-deploy-templates",
+      frontend: "backroom-blackjack-frontend-{stage}",
+      additional: [],
     },
     hasFrontend: true,
     hasLambdas: true,
@@ -276,7 +276,7 @@ export function getProjectDependents(stackType: StackType): StackType[] {
  * This can be used to validate that all templates have corresponding config
  */
 export function discoverTemplateProjects(): string[] {
-  const templatesDir = join(__dirname, "templates");
+  const templatesDir = join(import.meta.dirname, "templates");
 
   if (!existsSync(templatesDir)) {
     return [];

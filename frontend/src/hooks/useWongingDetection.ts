@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { DealerCharacter } from "@/data/dealerCharacters";
 import { increaseDealerSuspicion } from "./useDealerSuspicion";
 
@@ -40,41 +40,8 @@ export function useWongingDetection({
   const participationHistory = useRef<ParticipationRecord[]>([]);
   const lastRecordedHand = useRef<number>(-1);
 
-  // Record participation at the start of each hand (during DEALING phase)
-  useEffect(() => {
-    if (
-      !initialized ||
-      playerSeat === null ||
-      phase !== "DEALING" ||
-      handNumber === lastRecordedHand.current
-    ) {
-      return;
-    }
-
-    // Record this hand's participation
-    const record: ParticipationRecord = {
-      handNumber,
-      participated: playerBet > 0,
-      trueCount,
-      betAmount: playerBet > 0 ? playerBet : undefined,
-    };
-
-    participationHistory.current.push(record);
-    lastRecordedHand.current = handNumber;
-
-    // Keep only last 20 hands
-    if (participationHistory.current.length > 20) {
-      participationHistory.current.shift();
-    }
-
-    // Analyze wonging pattern after we have at least 10 hands of data
-    if (participationHistory.current.length >= 10) {
-      analyzeWongingPattern();
-    }
-  }, [phase, handNumber, playerSeat, playerBet, trueCount, initialized]);
-
   // Analyze participation pattern for wonging behavior
-  const analyzeWongingPattern = () => {
+  const analyzeWongingPattern = useCallback(() => {
     if (!currentDealer || participationHistory.current.length < 10) return;
 
     const history = participationHistory.current;
@@ -119,7 +86,48 @@ export function useWongingDetection({
       // Keep last 5 records to maintain some context
       participationHistory.current = participationHistory.current.slice(-5);
     }
-  };
+  }, [currentDealer, setDealerSuspicion]);
+
+  // Record participation at the start of each hand (during DEALING phase)
+  useEffect(() => {
+    if (
+      !initialized ||
+      playerSeat === null ||
+      phase !== "DEALING" ||
+      handNumber === lastRecordedHand.current
+    ) {
+      return;
+    }
+
+    // Record this hand's participation
+    const record: ParticipationRecord = {
+      handNumber,
+      participated: playerBet > 0,
+      trueCount,
+      betAmount: playerBet > 0 ? playerBet : undefined,
+    };
+
+    participationHistory.current.push(record);
+    lastRecordedHand.current = handNumber;
+
+    // Keep only last 20 hands
+    if (participationHistory.current.length > 20) {
+      participationHistory.current.shift();
+    }
+
+    // Analyze wonging pattern after we have at least 10 hands of data
+    if (participationHistory.current.length >= 10) {
+      analyzeWongingPattern();
+    }
+  }, [
+    phase,
+    handNumber,
+    playerSeat,
+    playerBet,
+    trueCount,
+    initialized,
+    analyzeWongingPattern,
+  ]);
 
   // Reset history when player leaves table or dealer changes
   useEffect(() => {
@@ -127,5 +135,5 @@ export function useWongingDetection({
       participationHistory.current = [];
       lastRecordedHand.current = -1;
     }
-  }, [playerSeat, currentDealer?.id]);
+  }, [playerSeat, currentDealer]);
 }

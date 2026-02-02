@@ -289,35 +289,6 @@ export default function DealerInfo({
                 fontWeight: "bold",
               }}
             >
-              Attitude
-            </div>
-            <div
-              style={{
-                fontSize: "14px",
-                color: dealer.onYourSide ? "#4CAF50" : "#F44336",
-                fontWeight: "bold",
-              }}
-            >
-              {dealer.onYourSide ? "Friendly" : "By the book"}
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: "#2a2a2a",
-              padding: "12px",
-              borderRadius: "8px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                color: "#888",
-                marginBottom: "4px",
-                textTransform: "uppercase",
-                fontWeight: "bold",
-              }}
-            >
               Vigilance
             </div>
             <div
@@ -337,6 +308,35 @@ export default function DealerInfo({
                 : dealer.detectionSkill < 70
                   ? "Moderate"
                   : "High"}
+            </div>
+          </div>
+
+          <div
+            style={{
+              backgroundColor: "#2a2a2a",
+              padding: "12px",
+              borderRadius: "8px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#888",
+                marginBottom: "4px",
+                textTransform: "uppercase",
+                fontWeight: "bold",
+              }}
+            >
+              Attitude
+            </div>
+            <div
+              style={{
+                fontSize: "14px",
+                color: dealer.onYourSide ? "#4CAF50" : "#FFC107",
+                fontWeight: "bold",
+              }}
+            >
+              {dealer.onYourSide ? "Friendly" : "By the Book"}
             </div>
           </div>
         </div>

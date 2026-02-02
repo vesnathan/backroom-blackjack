@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Card Counting Trainer PostConfirmation Lambda Trigger"
+Description: "Backroom Blackjack PostConfirmation Lambda Trigger"
 
 Parameters:
   Stage:

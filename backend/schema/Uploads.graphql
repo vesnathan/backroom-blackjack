@@ -1,0 +1,22 @@
+# Avatar upload functionality
+# Uses S3 presigned URLs for secure client-side uploads
+
+type UploadUrl {
+  uploadUrl: String!
+  fileUrl: String!
+  key: String!
+}
+
+input GetUploadUrlInput {
+  contentType: String!
+  fileExtension: String!
+}
+
+extend type Mutation {
+  # Get a presigned URL for uploading an avatar
+  # Returns uploadUrl (PUT endpoint) and fileUrl (final public URL)
+  getAvatarUploadUrl(input: GetUploadUrlInput!): UploadUrl @aws_cognito_user_pools
+
+  # Update user's avatar URL after successful upload
+  updateAvatar(avatarUrl: String!): User @aws_cognito_user_pools
+}

@@ -51,6 +51,7 @@ export function useAutoStartHand({
   setPlayerHand,
   setDealerHand,
   setPlayerChips,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setSpeechBubbles,
   setAIPlayers,
   aiPlayers,
@@ -133,9 +134,8 @@ export function useAutoStartHand({
           setPlayerChips((prev) => prev - playerBet);
         }
 
-        setSpeechBubbles([]);
-
-        // Announce "Bets Closed" after clearing bubbles (only if player is seated)
+        // Note: Don't clear speech bubbles - let ongoing conversations finish
+        // Announce "Bets Closed" (only if player is seated)
         if (playerSeat !== null) {
           addSpeechBubble("dealer-bets-closed", "Bets closed!", -1);
         }
@@ -226,9 +226,8 @@ export function useAutoStartHand({
           setPlayerChips((prev) => prev - playerBet);
         }
 
-        setSpeechBubbles([]);
-
-        // Announce "Bets Closed" after clearing bubbles (only if player is seated)
+        // Note: Don't clear speech bubbles - let ongoing conversations finish
+        // Announce "Bets Closed" (only if player is seated)
         if (playerSeat !== null) {
           addSpeechBubble("dealer-bets-closed", "Bets closed!", -1);
         }
