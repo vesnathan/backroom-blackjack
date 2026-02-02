@@ -555,8 +555,8 @@ export default function TableSeats({ isMobileMode = false }: TableSeatsProps) {
                     <div
                       className={
                         isMobileMode
-                          ? "text-white text-xs"
-                          : "text-white text-sm"
+                          ? "text-white text-sm"
+                          : "text-white text-base"
                       }
                       style={{
                         fontWeight: "bold",

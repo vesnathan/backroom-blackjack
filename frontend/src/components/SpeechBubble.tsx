@@ -79,9 +79,9 @@ export default function SpeechBubble({
   const avatarOffset = layout.avatarSize;
   const arrowSize = isMobile ? 10 : 14;
   const padding = isMobile ? "10px 14px" : "18px 24px";
-  const fontSize = isMobile ? "12px" : "18px";
-  const maxWidth = isMobile ? "180px" : "320px";
-  const minWidth = isMobile ? "100px" : "160px";
+  const fontSize = isMobile ? "14px" : "18px";
+  const maxWidth = isMobile ? "200px" : "320px";
+  const minWidth = isMobile ? "110px" : "160px";
   const borderRadius = isMobile ? "16px" : "24px";
   const borderWidth = layout.avatarBorderWidth;
 

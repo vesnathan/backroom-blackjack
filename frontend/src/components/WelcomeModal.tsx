@@ -1,14 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Button,
-} from "@nextui-org/react";
 import Image from "next/image";
 
 interface WelcomeModalProps {
@@ -22,7 +14,7 @@ function useIsSmallScreen(): boolean {
 
   useEffect(() => {
     const check = () => {
-      setIsSmall(window.innerHeight < 600 || window.innerWidth < 600);
+      setIsSmall(window.innerHeight < 600 || window.innerWidth < 500);
     };
     check();
     window.addEventListener("resize", check);
@@ -35,68 +27,102 @@ function useIsSmallScreen(): boolean {
 export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const isSmallScreen = useIsSmallScreen();
 
-  const handleStartGame = () => {
-    onClose();
-  };
+  if (!isOpen) return null;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      size={isSmallScreen ? "sm" : "lg"}
-      isDismissable={false}
-      hideCloseButton
-      backdrop="blur"
-      classNames={{
-        base: isSmallScreen ? "max-h-[95vh] my-2" : "",
-        body: isSmallScreen ? "py-2" : "",
-        header: isSmallScreen ? "py-2" : "",
-        footer: isSmallScreen ? "py-2" : "",
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.8)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10000,
+        padding: isSmallScreen ? "10px" : "20px",
       }}
     >
-      <ModalContent>
-        <ModalHeader className="flex flex-col items-center gap-2 text-white pt-4">
+      <div
+        style={{
+          backgroundColor: "#1a1a2e",
+          borderRadius: isSmallScreen ? "12px" : "16px",
+          padding: isSmallScreen ? "16px" : "32px",
+          maxWidth: "400px",
+          width: "100%",
+          maxHeight: isSmallScreen ? "95vh" : "90vh",
+          overflowY: "auto",
+          border: "2px solid #FFD700",
+          boxShadow: "0 0 40px rgba(255, 215, 0, 0.3)",
+          textAlign: "center",
+        }}
+      >
+        {/* Logo */}
+        <div style={{ marginBottom: isSmallScreen ? "12px" : "20px" }}>
           <Image
             src="/logo.webp"
             alt="Backroom Blackjack"
-            width={isSmallScreen ? 80 : 160}
-            height={isSmallScreen ? 80 : 160}
-            className={isSmallScreen ? "mb-1" : "mb-2"}
+            width={isSmallScreen ? 60 : 100}
+            height={isSmallScreen ? 60 : 100}
+            style={{ margin: "0 auto" }}
             priority
           />
-          <h2
-            className={`font-bold chip-gold text-center ${isSmallScreen ? "text-lg" : "text-3xl"}`}
-          >
-            Welcome to Backroom Blackjack!
-          </h2>
-        </ModalHeader>
-        <ModalBody className="text-center">
-          <div className={isSmallScreen ? "space-y-2" : "space-y-4"}>
-            <p
-              className={`text-white leading-relaxed ${isSmallScreen ? "text-sm" : "text-lg"}`}
-            >
-              Master card counting in a realistic casino environment. Beat the
-              house!
-            </p>
+        </div>
 
-            <p
-              className={`text-white font-bold chip-gold ${isSmallScreen ? "text-lg mt-2" : "text-2xl mt-6"}`}
-            >
-              Have Fun!
-            </p>
-          </div>
-        </ModalBody>
-        <ModalFooter className="flex justify-center">
-          <Button
-            className={`w-full max-w-md bg-casino-gold hover:bg-yellow-600 text-black font-bold ${isSmallScreen ? "text-sm py-3" : "text-lg py-6"}`}
-            onPress={handleStartGame}
-            size={isSmallScreen ? "md" : "lg"}
-            style={{ minHeight: "44px" }}
-          >
-            Start Playing
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+        {/* Title */}
+        <h2
+          style={{
+            fontSize: isSmallScreen ? "18px" : "24px",
+            fontWeight: "bold",
+            color: "#FFD700",
+            marginBottom: isSmallScreen ? "12px" : "16px",
+          }}
+        >
+          Welcome to Backroom Blackjack!
+        </h2>
+
+        {/* Description */}
+        <p
+          style={{
+            color: "#d1d5db",
+            fontSize: isSmallScreen ? "13px" : "15px",
+            marginBottom: isSmallScreen ? "16px" : "24px",
+            lineHeight: 1.5,
+          }}
+        >
+          Master card counting in a realistic casino environment. Beat the
+          house!
+        </p>
+
+        {/* Start Button */}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            width: "100%",
+            backgroundColor: "#FFD700",
+            color: "#000",
+            fontWeight: "bold",
+            fontSize: isSmallScreen ? "14px" : "16px",
+            padding: isSmallScreen ? "12px" : "14px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            transition: "all 0.2s",
+            minHeight: "44px",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "#FFC107";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "#FFD700";
+          }}
+        >
+          Start Playing
+        </button>
+      </div>
+    </div>
   );
 }
